@@ -12,7 +12,7 @@
 
 Todos los sistemas operativos se diseñaron para humanos, y la IA vino después, encima. H.E.R.M.I.S da vuelta eso **sin reinstalar nada**.
 
-Hermes trabaja normal hasta que le decís **"Jarvis, modo piloto automático"**. Ahí **cambia de forma**: aparece una barra que se comprime en una **bola** (el orbe), y a partir de ese momento Hermes:
+Hermes trabaja normal hasta que le decís **"Hey Jarvis, modo piloto automático"**. Ahí **cambia de forma**: aparece una barra que se comprime en una **bola** (el orbe), y a partir de ese momento Hermes:
 
 - **te habla** en vez de escribirte, con respuestas cortas;
 - **DIBUJA** en pantalla lo que necesitás ver (correos, tablas, tarjetas, documentos) como superficies flotantes;
@@ -24,7 +24,7 @@ La referencia es *Her* (2013): te sentás a charlar con "ella", y ella te muestr
 
 ## Qué hace (la experiencia)
 
-1. **Activación + morph.** "Jarvis" (la wake word por defecto de Hermes) → "modo piloto automático" → la pantalla se oscurece, una barra se comprime en el orbe → "¿Qué hacemos hoy?" → la capa se vuelve transparente y vuelve tu escritorio.
+1. **Activación + morph.** "Hey Jarvis" (modelo `hey_jarvis` incluido en openWakeWord, gratis) → "modo piloto automático" → la pantalla se oscurece, una barra se comprime en el orbe → "¿Qué hacemos hoy?" → la capa se vuelve transparente y vuelve tu escritorio.
 2. **Mostrar: Hermes DIBUJA.** Si pedís algo para *ver*, Hermes lo dibuja como superficie flotante sin abrir ninguna app.
 3. **Hacer: Hermes MANEJA.** Si pedís algo para *hacer* (abrir Excel, dividir la pantalla), Hermes maneja tus apps reales.
 4. **Contexto.** Hermes sabe qué hay en pantalla. Por eso "abrí el tercero" o "cerrá eso" funcionan.
@@ -54,7 +54,7 @@ Hermes Desktop ya trae un **HUD**, una barra de chat flotante siempre arriba, y 
 
 | Necesidad | Lo provee Hermes |
 |---|---|
-| Escucha siempre activa | Wake word, frase por defecto **"jarvis"** (openWakeWord, Windows x64) |
+| Escucha siempre activa | Wake word: por defecto "hey hermes"; **"hey jarvis"** con el modelo `hey_jarvis` incluido en openWakeWord (Windows x64, sin key) |
 | Voz a texto / respuesta hablada | Voice mode: faster-whisper local + Edge TTS gratis |
 | Clics, teclado, leer la UI | Tool `computer_use` (cua-driver, UIAutomation) |
 | Listar ventanas y apps, enfocar | `computer_use` → `list_windows`, `list_apps`, `focus_app` (lo llamamos con `ctx.dispatch_tool`) |
@@ -66,7 +66,7 @@ Limitación verificada: el plugin **no puede encender la voz ni la wake word glo
 ## Arquitectura
 
 ```
-"Jarvis…" ──▶ Hermes (wake word + STT + LLM + TTS + computer_use)
+"Hey Jarvis…" ──▶ Hermes (wake word + STT + LLM + TTS + computer_use)
                  │
                  ├─ tools del plugin
                  │    ├─ autopilot(on|off)               ── cambia el modo + dispara el morph
@@ -101,7 +101,7 @@ Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards
 
 ## Demo (menos de 90 segundos), borrador
 
-1. Hermes normal en pantalla → "**Jarvis, modo piloto automático**" → **morph** a orbe → "¿Qué hacemos hoy?"
+1. Hermes normal en pantalla → "**Hey Jarvis, modo piloto automático**" → **morph** a orbe → "¿Qué hacemos hoy?"
 2. "Mostrame mis últimos 10 correos" → se dibuja la superficie
 3. "Abrí el de Juan" → Hermes sabe cuál es por el contexto
 4. "Poneme el Excel de notas a la izquierda y los trabajos a la derecha" → acomoda las ventanas
@@ -119,7 +119,7 @@ Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards
 | HUD de Hermes | No se toca (prohibido por el catálogo); el morph es nuestro | ✅ |
 | Renderer | Electron aparte, `npx` con versión fija | ✅ |
 | Protocolo | `x-lumen-desktop v2` + mensaje `mode` | ✅ |
-| Wake word | **"jarvis"** (es la frase por defecto de Hermes) | ⏳ confirmar |
+| Wake word | **"hey jarvis"** (`wake_word.openwakeword.model: hey_jarvis`, gratis). La frase por defecto de Hermes es "hey hermes" | ⏳ confirmar |
 | Guion de la demo | Borrador de arriba | ⏳ issue abierto |
 | Spotify | Fuera de la demo por ahora | ⏳ issue abierto |
 

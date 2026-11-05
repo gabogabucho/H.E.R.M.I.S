@@ -17,10 +17,10 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] Reglas del catálogo confirmadas
 - [x] Decisión del orbe: opción B (orbe propio con morph), Pet de Hermes como respaldo
 - [ ] **Aprobación del equipo** de la propuesta
-- [ ] Hermes instalado en Windows: `/voice on`, `/wake on` ("jarvis"), `hermes computer-use doctor` en verde
+- [ ] Hermes instalado en Windows: `/voice on`, `/wake on` con `wake_word.openwakeword.model: hey_jarvis`, `hermes computer-use doctor` en verde
 - [ ] Confirmar puerto y autenticación del WS del gateway (para `voice.status` / `wake.detected`)
 
-**Validación:** decís "jarvis", Hermes te responde por voz y hace un clic con computer use.
+**Validación:** decís "hey jarvis", Hermes te responde por voz y hace un clic con computer use.
 
 ---
 
@@ -46,7 +46,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [ ] `close_surface` + `list_surfaces`, con estado persistente (`plugin_data_dir`)
 - [ ] Flujo Gmail con la skill `google-workspace`: "últimos 10 correos" → `email_list`
 
-**Validación:** "Jarvis, modo piloto automático" → morph → "mostrame mis últimos 10 correos" → se dibuja la lista.
+**Validación:** "Hey Jarvis, modo piloto automático" → morph → "mostrame mis últimos 10 correos" → se dibuja la lista.
 
 ---
 

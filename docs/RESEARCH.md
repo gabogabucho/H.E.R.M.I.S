@@ -18,6 +18,8 @@
 > - ✅ `ctx.set_config` escribe solo en el subárbol `settings` del plugin (`hermes_cli/plugins.py:278`).
 > - ✅ Existen `meeting-overlay`, `spotify-desktop`, `hermes-windows-computer-use` y `orbit-desktop` en `plugin-catalog/`. El último release es v0.22.7 (2026-11-03).
 >
+> ❌ **Error del informe:** la frase por defecto de la wake word es **"hey hermes"**, no "jarvis" (`hermes_cli/config_defaults.py:1257`; la doc dice *"Porcupine's default keyword is \"jarvis\""*). Para "hey jarvis" gratis: `wake_word.openwakeword.model: hey_jarvis`, un modelo incluido en openWakeWord (`config_defaults.py:1266`). Corregir donde el informe dice "default jarvis".
+>
 > ⚠️ **El informe no destaca esto:** Hermes Desktop ya trae un **HUD** (⌘/Ctrl+Shift+H). Saca el chat a una barra flotante, sin marco y siempre arriba, con clics que pasan a través, *"sobre lo que estés trabajando"*. Su posición en pantalla es contexto: "esto", "acá" y "esa página" se refieren a lo que tiene debajo. **Un overlay flotante sobre el escritorio, solo, NO es diferencial.** El diferencial es que **el agente dibuja superficies de datos** (correos, tablas, tarjetas) y **acomoda ventanas reales**; el HUD es un chat, no un lienzo. Esto hay que dejarlo explícito en el pitch y en la demo.
 
 ---
