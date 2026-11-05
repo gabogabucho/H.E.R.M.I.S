@@ -91,7 +91,15 @@ Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards
 
 - **Spotify** muestra poco al computer use (árbol de accesibilidad pobre) → queda fuera de la demo hasta probarlo.
 - **Empaquetar Electron** y lanzarlo desde el plugin en Python → hay que decidir: ejecutable ya armado o `npx electron`.
-- **Catálogo**: el formato de la entrada está sin confirmar (la página de envío dio 404). Lo más probable es que el plugin viva en este repo y el PR solo agregue la entrada.
+- **Catálogo** ([reglas](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)): el PR a `NousResearch/hermes-agent` agrega solo `plugin-catalog/hermis.yaml`, que apunta a este repo con un **SHA completo de 40 caracteres**. Reglas que afectan el diseño:
+  - **El repo tiene que ser PÚBLICO** (hoy es privado).
+  - **No se permiten binarios en el repo**: nada de Electron ya empaquetado. Un componente nativo tiene que construirlo el GitHub Actions del propio repo, con atestación de build.
+  - **Prohibido el código que se actualiza solo**: el plugin no puede descargar y reemplazar sus propios archivos.
+  - **Hay que declarar todo**: procesos en segundo plano (el overlay y el servidor WebSocket), llamadas de red y comandos de shell.
+  - **Las capabilities declaradas tienen que coincidir** con lo que el plugin registra de verdad.
+  - **Las credenciales**, solo a través de `agent.secret_scope.get_secret()`.
+  - **Dependencias** con un piso y un techo de versión (nada de `>=X` sin techo).
+  - **Alternativa a evaluar**: el *Desktop Plugin SDK* (`desktop/plugin.js`) de Hermes podría reemplazar o complementar a Electron.
 - **Windows**: computer use no puede manejar ventanas que corren como administrador (UIPI).
 
 ## Entrega
