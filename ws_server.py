@@ -104,9 +104,11 @@ async def _serve(token: str, data_dir: Path | str | None = None) -> None:
 
 def _run(token: str, data_dir: Path | str | None = None) -> None:
     global _loop
+    coro = _serve(token, data_dir)
     try:
-        asyncio.run(_serve(token, data_dir))
+        asyncio.run(coro)
     except Exception as exc:
+        coro.close()
         logger.warning("servidor WS del overlay terminó: %s", exc)
     finally:
         with _lock:
