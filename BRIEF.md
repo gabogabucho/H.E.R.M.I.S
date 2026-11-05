@@ -119,7 +119,7 @@ Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards
 | HUD de Hermes | No se toca (prohibido por el catálogo); el morph es nuestro | ✅ |
 | Renderer | Electron aparte, `npx` con versión fija | ✅ |
 | Protocolo | `x-lumen-desktop v2` + mensaje `mode` | ✅ |
-| Wake word | **"hey jarvis"** (`wake_word.openwakeword.model: hey_jarvis`, gratis). La frase por defecto de Hermes es "hey hermes" | ⏳ confirmar |
+| Wake word | Dos opciones válidas, sin key: **"hey hermes"** (la que viene por defecto, sin configurar nada) o **"hey jarvis"** (`wake_word.openwakeword.model: hey_jarvis`). Los ejemplos usan "Hey Jarvis" | ⏳ elige el equipo (#1) |
 | Guion de la demo | Borrador de arriba | ⏳ issue abierto |
 | Spotify | Fuera de la demo por ahora | ⏳ issue abierto |
 
