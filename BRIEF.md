@@ -1,110 +1,146 @@
 # H.E.R.M.I.S — Brief
 
-> Un plugin de Hermes que convierte tu escritorio en un **OS para agentes**.
+> Un plugin de Hermes que agrega el **Modo Piloto Automático**: tu escritorio se convierte en un **OS para agentes**. No le escribís: le hablás, y Hermes dibuja en pantalla y maneja tus apps.
 
-Boceto visual: [`docs/boceto.html`](docs/boceto.html) (abrilo en el navegador)
+- Boceto visual: [`docs/boceto.html`](docs/boceto.html) (abrilo en el navegador)
+- Investigación técnica: [`docs/RESEARCH.md`](docs/RESEARCH.md)
+- Plan: [`ROADMAP.md`](ROADMAP.md)
+
+> **Estado: propuesta.** No se escribe código hasta que el equipo apruebe la propuesta (ver issue "Propuesta: Modo Piloto Automático").
 
 ## La idea
 
-Todos los sistemas operativos se diseñaron para humanos, y la IA vino después, encima. H.E.R.M.I.S da vuelta eso **sin reinstalar nada**: lo activás y tu escritorio pasa a ser un espacio que maneja el agente. Vos hablás, Hermes actúa. Te muestra lo que necesitás y maneja tus apps como si fuera vos.
+Todos los sistemas operativos se diseñaron para humanos, y la IA vino después, encima. H.E.R.M.I.S da vuelta eso **sin reinstalar nada**.
 
-La referencia es *Her* (2013): te sentás a charlar con "ella", y ella te muestra en pantalla lo necesario o te da feedback.
+Hermes trabaja normal hasta que le decís **"Jarvis, modo piloto automático"**. Ahí **cambia de forma**: aparece una barra que se comprime en una **bola** (el orbe), y a partir de ese momento Hermes:
 
-Es la filosofía de [Lumen OS](https://github.com/gabogabucho/Lumen-os) ("no hay apps, hay superficies") empaquetada como plugin, arriba del Windows que ya usás.
+- **te habla** en vez de escribirte, con respuestas cortas;
+- **DIBUJA** en pantalla lo que necesitás ver (correos, tablas, tarjetas, documentos) como superficies flotantes;
+- **MANEJA** tus apps reales: abre, enfoca y acomoda ventanas.
+
+Decís "salí del piloto automático" y vuelve a ser el Hermes de siempre.
+
+La referencia es *Her* (2013): te sentás a charlar con "ella", y ella te muestra en pantalla lo necesario. La filosofía es la de [Lumen OS](https://github.com/gabogabucho/Lumen-os) ("no hay apps, hay superficies"), empaquetada como plugin, arriba del Windows que ya usás.
 
 ## Qué hace (la experiencia)
 
-1. **Despertar.** Decís la wake word, la pantalla se oscurece y aparece la bola con "¿Qué hacemos hoy?". Después la capa se vuelve transparente y vuelve tu escritorio.
-2. **Mostrar: Hermes DIBUJA.** Si pedís algo para *ver* (correos, una tabla, un resumen), Hermes lo dibuja como superficie flotante sin abrir ninguna app.
-3. **Hacer: Hermes MANEJA.** Si pedís algo para *hacer* (abrir Excel, dividir la pantalla, armar una playlist), Hermes maneja tus apps reales.
-4. **Contexto.** Hermes siempre sabe qué hay en pantalla. Por eso "abrí el tercero" o "cerrá eso" funcionan.
+1. **Activación + morph.** "Jarvis" (la wake word por defecto de Hermes) → "modo piloto automático" → la pantalla se oscurece, una barra se comprime en el orbe → "¿Qué hacemos hoy?" → la capa se vuelve transparente y vuelve tu escritorio.
+2. **Mostrar: Hermes DIBUJA.** Si pedís algo para *ver*, Hermes lo dibuja como superficie flotante sin abrir ninguna app.
+3. **Hacer: Hermes MANEJA.** Si pedís algo para *hacer* (abrir Excel, dividir la pantalla), Hermes maneja tus apps reales.
+4. **Contexto.** Hermes sabe qué hay en pantalla. Por eso "abrí el tercero" o "cerrá eso" funcionan.
+5. **El orbe está vivo.** Muestra si está escuchando, pensando, actuando o hablando.
+6. **Salida.** "Salí del piloto automático" → el orbe vuelve a ser barra y desaparece.
+
+## Nuestro diferencial (y lo que NO es)
+
+Hermes Desktop ya trae un **HUD**, una barra de chat flotante siempre arriba, y **Pets**, mascotas que flotan y reaccionan al agente. Por eso "algo flotando sobre el escritorio" **no es diferencial por sí solo**. Lo nuestro es:
+
+| HUD / Pets de Hermes | H.E.R.M.I.S |
+|---|---|
+| Un chat o una mascota flotando | Un **lienzo**: el agente dibuja superficies con datos |
+| Vos escribís | **Modo voz**: el agente cambia de comportamiento |
+| No toca tus ventanas | **Acomoda tus ventanas reales** (dividir, maximizar, cuadrícula) |
+| Estados genéricos | El orbe muestra **escuchando / hablando** con eventos de voz reales |
 
 ## Por qué es un plugin y no un prompt
 
-Los jueces premian lo que **no** se puede hacer con un prompt o una skill. Esto no se puede:
+- **Una capa de render propia** (Electron, transparente, siempre arriba, los clics pasan donde no hay nada dibujado), conectada a Hermes por WebSocket local.
+- **Tools con código propio**: dibujar superficies y acomodar ventanas con la API de Win32.
+- **Cambio de modo real**: el plugin inyecta instrucciones de modo (`register_system_prompt_section` / `pre_llm_call`) para que Hermes responda corto y por voz y muestre los datos en superficies.
+- **Hooks**: `pre_llm_call` le pasa a Hermes qué hay en pantalla (desde un cache, nunca capturando en el momento); los hooks de tool animan el orbe.
+- **Estado persistente**: el modo activo, las superficies y las ventanas, entre turnos.
 
-- **Una capa de render propia** (Electron, transparente, siempre arriba, los clics pasan donde no hay nada dibujado), conectada a Hermes por WebSocket.
-- **Tools con código propio**: dibujar superficies y acomodar ventanas reales con la API de Win32.
-- **Hooks**: `pre_llm_call` le pasa a Hermes qué hay en pantalla; los hooks de turno y de tool animan el estado de la bola (escuchando, pensando, actuando).
-- **Estado persistente**: superficies y ventanas activas, entre turnos.
-
-## Lo que NO construimos (Hermes ya lo trae)
+## Lo que NO construimos (Hermes ya lo trae) — verificado en `docs/RESEARCH.md`
 
 | Necesidad | Lo provee Hermes |
 |---|---|
-| Escucha siempre activa | Wake word (openWakeWord / sherpa / Porcupine) |
-| Voz a texto | Voice mode (faster-whisper local o en la nube, con conversación continua y la opción de interrumpirlo) |
-| Respuesta hablada | TTS (Edge gratis, ElevenLabs, OpenAI…) |
-| Clics, teclado, leer la UI | Computer use (`cua-driver`, Windows UIAutomation) |
-| Gmail | Conexión que el usuario ya tiene |
+| Escucha siempre activa | Wake word, frase por defecto **"jarvis"** (openWakeWord, Windows x64) |
+| Voz a texto / respuesta hablada | Voice mode: faster-whisper local + Edge TTS gratis |
+| Clics, teclado, leer la UI | Tool `computer_use` (cua-driver, UIAutomation) |
+| Listar ventanas y apps, enfocar | `computer_use` → `list_windows`, `list_apps`, `focus_app` (lo llamamos con `ctx.dispatch_tool`) |
+| Gmail | Skill bundled `google-workspace` (OAuth de Hermes) |
+| Eventos de voz para el orbe | El gateway emite `voice.status`, `voice.partial`, `wake.detected` |
 
-Nosotros **orquestamos**: el plugin activa y configura todo esto con un solo comando.
+Limitación verificada: el plugin **no puede encender la voz ni la wake word globales** (`ctx.set_config` solo escribe la configuración del propio plugin). Se activan una vez, en la instalación, y el modo vive arriba de eso.
 
 ## Arquitectura
 
 ```
-Voz ──▶ Hermes (wake word + STT + LLM + TTS + computer use)
-              │
-              ├─ tools del plugin
-              │    ├─ render_surface(surface, data)   ─┐
-              │    ├─ close_surface(id)                │  WebSocket local
-              │    ├─ layout_windows(apps, layout)     │  (127.0.0.1 + token)
-              │    └─ launch_app(name)                 ▼
-              ├─ hooks (pre_llm_call, pre/post_tool_call) ──▶ Overlay Electron
-              └─ /hermis on|off                               (shell de Lumen: bola + superficies)
+"Jarvis…" ──▶ Hermes (wake word + STT + LLM + TTS + computer_use)
+                 │
+                 ├─ tools del plugin
+                 │    ├─ autopilot(on|off)               ── cambia el modo + dispara el morph
+                 │    ├─ render_surface(surface, data)   ─┐
+                 │    ├─ close_surface(id)                │  WebSocket local
+                 │    ├─ list_surfaces()                  │  (127.0.0.1 + token)
+                 │    ├─ layout_windows(apps, layout)     │  Win32 propio
+                 │    └─ launch_app(name)                 ▼
+                 ├─ system prompt del modo + pre_llm_call (contexto de pantalla)
+                 └─ hooks pre/post_tool_call ──────────▶ Overlay Electron (aparte)
+                                                          ├─ orbe de Lumen + morph
+                                                          ├─ superficies
+                 gateway WS (voice.status, wake.detected) ─┘ (estados escuchando/hablando)
 ```
+
+- **Overlay**: proceso Electron aparte, lanzado con `npx electron@<versión fija>` (sin binarios en el repo). El Desktop Plugin SDK **no puede** crear ventanas fuera de la app de Hermes (verificado).
+- **Shell**: se porta el de Lumen OS (~70% tal cual: orbe con 4 estados, ventanas, notificaciones, clics que pasan a través).
+- **Plan de respaldo del orbe**: si el review del catálogo rechaza Electron, el orbe pasa a ser una **Pet** personalizada de Hermes (canal oficial, siempre arriba, sin morph propio).
 
 ### Protocolo: `x-lumen-desktop v2`
 
-El agente **no escribe HTML**: manda **datos** y el overlay tiene los componentes. Es más rápido, gasta menos tokens y no se rompe.
+El agente **no escribe HTML**: manda **datos** y el overlay tiene los componentes.
 
 ```json
+{ "type": "mode",   "autopilot": true }
 { "type": "render", "surface": "email_list", "data": { "items": [...] } }
 { "type": "render", "surface": "notification", "data": { "text": "Listo", "level": "success" } }
-{ "type": "state",  "orb": "thinking" }
+{ "type": "state",  "orb": "listening | thinking | acting | speaking | idle" }
 ```
 
 Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards`, `web`, `image`, y `custom` (HTML aislado, solo como salida de emergencia).
 
 ## Demo (menos de 90 segundos), borrador
 
-1. Wake word → intro inmersiva → "¿Qué hacemos hoy?"
+1. Hermes normal en pantalla → "**Jarvis, modo piloto automático**" → **morph** a orbe → "¿Qué hacemos hoy?"
 2. "Mostrame mis últimos 10 correos" → se dibuja la superficie
 3. "Abrí el de Juan" → Hermes sabe cuál es por el contexto
 4. "Poneme el Excel de notas a la izquierda y los trabajos a la derecha" → acomoda las ventanas
+5. "Salí del piloto automático" → el orbe vuelve a ser barra
 
-> Spotify queda **afuera** de la demo hasta tener un primer acercamiento (ver issues abiertos).
+> Spotify queda **afuera** de la demo hasta tener un primer acercamiento.
 
 ## Decisiones
 
 | Tema | Decisión | Estado |
 |---|---|---|
-| Concepto | El escritorio como OS para agentes | ✅ |
-| Modo visual | Capa transparente encima del escritorio + intro inmersiva | ✅ |
-| Renderer | Electron | ✅ |
-| Protocolo | `x-lumen-desktop v2` (superficies) | ✅ |
-| Wake word | "hey hermes" / "jarvis" (Porcupine, pide key) / frase propia (sherpa) | ⏳ issue abierto |
+| Concepto | Modo Piloto Automático: el escritorio como OS para agentes | ✅ propuesto, falta aprobación del equipo |
+| Orbe | **Opción B**: orbe propio en nuestro overlay, con morph | ✅ propuesto, falta aprobación del equipo |
+| Respaldo del orbe | Pet personalizada de Hermes | ✅ propuesto |
+| HUD de Hermes | No se toca (prohibido por el catálogo); el morph es nuestro | ✅ |
+| Renderer | Electron aparte, `npx` con versión fija | ✅ |
+| Protocolo | `x-lumen-desktop v2` + mensaje `mode` | ✅ |
+| Wake word | **"jarvis"** (es la frase por defecto de Hermes) | ⏳ confirmar |
 | Guion de la demo | Borrador de arriba | ⏳ issue abierto |
-| Spotify | Fuera de la demo por ahora. Primer acercamiento: computer use, con plan B en Web API o URI `spotify:` | ⏳ issue abierto |
+| Spotify | Fuera de la demo por ahora | ⏳ issue abierto |
 
 ## Riesgos
 
-- **Spotify** muestra poco al computer use (árbol de accesibilidad pobre) → queda fuera de la demo hasta probarlo.
-- **Empaquetar Electron** y lanzarlo desde el plugin en Python → hay que decidir: ejecutable ya armado o `npx electron`.
-- **Catálogo** ([reglas](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)): el PR a `NousResearch/hermes-agent` agrega solo `plugin-catalog/hermis.yaml`, que apunta a este repo con un **SHA completo de 40 caracteres**. Reglas que afectan el diseño:
-  - **El repo tiene que ser PÚBLICO** (hoy es privado).
-  - **No se permiten binarios en el repo**: nada de Electron ya empaquetado. Un componente nativo tiene que construirlo el GitHub Actions del propio repo, con atestación de build.
-  - **Prohibido el código que se actualiza solo**: el plugin no puede descargar y reemplazar sus propios archivos.
-  - **Hay que declarar todo**: procesos en segundo plano (el overlay y el servidor WebSocket), llamadas de red y comandos de shell.
-  - **Las capabilities declaradas tienen que coincidir** con lo que el plugin registra de verdad.
-  - **Las credenciales**, solo a través de `agent.secret_scope.get_secret()`.
-  - **Dependencias** con un piso y un techo de versión (nada de `>=X` sin techo).
-  - **Alternativa a evaluar**: el *Desktop Plugin SDK* (`desktop/plugin.js`) de Hermes podría reemplazar o complementar a Electron.
-- **Windows**: computer use no puede manejar ventanas que corren como administrador (UIPI).
+- **Electron en el catálogo**: `npx electron` baja un binario al instalar. Hay precedentes (`spotify-desktop`, `snyk`), pero puede generar preguntas en el review → respaldo: build en GitHub Actions con atestación, o el orbe como Pet.
+- **WS del gateway para el orbe**: falta confirmar el puerto y la autenticación para conectarse como cliente y recibir `voice.status`.
+- **Estado "hablando"**: no está claro si `voice.status` lo distingue; si no, se aproxima con los hooks de turno.
+- **Gmail sin tools dedicadas**: "últimos 10 correos" depende de la skill `google-workspace` → hay que probarlo de punta a punta; plan B: IMAP.
+- **Windows (UIPI)**: no se pueden manejar ventanas que corren como administrador → en la demo, nada elevado.
+- **Catálogo** ([reglas](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)):
+  - El repo tiene que ser **público** antes de enviar (se hace al final).
+  - Sin binarios en el repo y sin código que se actualiza solo.
+  - Declarar en la `description`: procesos en segundo plano (overlay + WebSocket), red y shell.
+  - Capabilities declaradas = las que el plugin registra de verdad.
+  - Credenciales solo con `agent.secret_scope.get_secret()`; dependencias con piso y techo.
+  - Hay un borrador de `plugin-catalog/hermis.yaml` en `docs/RESEARCH.md`.
 
 ## Entrega
 
 - **Fecha límite:** miércoles 11/11/2026, 17:00 EST (19:00 hora de Argentina)
-- PR al catálogo de plugins de Hermes
+- PR al catálogo de plugins de Hermes (`NousResearch/hermes-agent`, archivo `plugin-catalog/hermis.yaml`)
 - Video en X etiquetando a @NousResearch (menos de 90 segundos)
 - Formulario: https://form.typeform.com/to/FwJLvOln
