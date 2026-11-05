@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H.E.R.M.I.S — Boceto</title>
+<style>
+:root{--accent:#0071E3;--ink:#1D1D1F;--muted:#6E6E73}
+*{box-sizing:border-box}
+body{margin:0;background:#2A2E36;font-family:Inter,'Segoe UI',system-ui,sans-serif;color:var(--ink);padding:32px 16px;display:flex;flex-direction:column;align-items:center;gap:20px}
+h1{color:#F2F4F8;font-weight:600;margin:0 0 8px;font-size:28px}
+.caption{color:#C9CFD8;font-size:15px;margin:24px 0 4px;align-self:center;max-width:1440px;width:100%}
+.frame{width:1440px;height:900px;position:relative;overflow:hidden;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4);flex-shrink:0;transform-origin:top center}
+.wrap{width:100%;max-width:1440px;display:flex;justify-content:center}
+.orb{border-radius:50%;background:radial-gradient(circle at 35% 30%,#9ADCFB 0,var(--accent) 50%,#00306B 100%);box-shadow:0 0 40px rgba(0,113,227,.5)}
+.desk{background:#C9D3DE}
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:48px;background:rgba(30,34,42,.88);display:flex;align-items:center;justify-content:center;gap:12px}
+.taskbar span{width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,.18)}
+.bubble-user{position:absolute;right:150px;bottom:150px;max-width:380px;padding:12px 16px;border-radius:16px 16px 4px 16px;background:#1D1D1F;color:#F5F5F7;font-size:15px}
+.mini-orb{position:absolute;right:40px;bottom:80px;width:92px;height:92px;display:flex;align-items:center;justify-content:center}
+.mini-orb .ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(0,113,227,.35)}
+.mini-orb .orb{width:66px;height:66px}
+.orb-label{position:absolute;right:52px;bottom:60px;font-size:12px}
+.surface{position:absolute;border-radius:18px;background:rgba(255,255,255,.86);border:1px solid rgba(0,0,0,.06);box-shadow:0 20px 60px rgba(0,40,90,.22);overflow:hidden}
+.row{display:flex;align-items:center;gap:14px;padding:11px 22px;border-bottom:1px solid rgba(0,0,0,.04)}
+.grid{display:grid;grid-template-columns:40px 220px repeat(4,minmax(0,1fr));font-size:13px}
+.grid div{padding:9px 10px;border-bottom:1px solid #E3E6EA;border-right:1px solid #E3E6EA}
+</style>
+</head>
+<body>
+<h1>H.E.R.M.I.S — tu escritorio como OS para agentes</h1>
+
+<p class="caption">1 · Despertar (intro inmersiva)</p>
+<div class="wrap"><div class="frame" style="background:#0A0C11;color:#F2F4F8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:48px">
+  <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 46%,rgba(0,113,227,.22) 0,rgba(0,113,227,0) 420px)"></div>
+  <div style="position:relative;width:260px;height:260px;display:flex;align-items:center;justify-content:center">
+    <div style="position:absolute;width:260px;height:260px;border-radius:50%;border:1px solid rgba(90,200,250,.25)"></div>
+    <div style="position:absolute;width:214px;height:214px;border-radius:50%;border:1px solid rgba(90,200,250,.45)"></div>
+    <div class="orb" style="width:168px;height:168px;box-shadow:0 0 80px rgba(0,113,227,.6)"></div>
+  </div>
+  <div style="position:relative;text-align:center">
+    <div style="font-size:44px;font-weight:500">Buenas. ¿Qué hacemos hoy?</div>
+    <div style="font-size:18px;color:#A9B1BF;margin-top:14px">Hablame como a una persona. Yo me ocupo de la pantalla.</div>
+  </div>
+  <div style="position:relative;display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-size:15px;color:#CDD3DD"><span style="width:8px;height:8px;border-radius:50%;background:#34C759"></span>Escuchando</div>
+  <div style="position:absolute;bottom:40px;font-size:13px;color:#8A93A3">En unos segundos la capa se vuelve transparente y vuelve tu escritorio</div>
+</div></div>
+
+<p class="caption">2 · Hermes dibuja: superficie "últimos 10 correos" sobre el escritorio real</p>
+<div class="wrap"><div class="frame desk">
+  <div style="position:absolute;left:640px;top:70px;width:720px;height:700px;border-radius:10px;background:#F4F6F9;box-shadow:0 8px 30px rgba(0,0,0,.12)">
+    <div style="height:40px;background:#E3E8EE;display:flex;align-items:center;padding:0 14px;font-size:13px;color:#56606E;border-radius:10px 10px 0 0">Documento sin título — tu app de siempre</div>
+  </div>
+  <div style="position:absolute;left:24px;top:24px;padding:6px 12px;border-radius:6px;background:rgba(255,255,255,.7);font-size:12px">Debajo: tu escritorio real, intacto</div>
+  <div class="surface" style="left:120px;top:90px;width:600px">
+    <div style="display:flex;align-items:center;gap:10px;padding:18px 22px;border-bottom:1px solid rgba(0,0,0,.06)">
+      <strong style="font-size:17px">Últimos 10 correos</strong>
+      <span style="font-size:12px;padding:3px 8px;border-radius:999px;background:#E8F1FD;color:#0058B0">3 sin leer</span>
+    </div>
+    <div id="mails"></div>
+    <div style="padding:12px 22px;font-size:12px;color:var(--muted)">Superficie <strong>email_list</strong> · dibujada por Hermes, sin abrir Gmail</div>
+  </div>
+  <div class="bubble-user">“Mostrame mis últimos 10 correos”</div>
+  <div style="position:absolute;right:150px;bottom:96px;max-width:380px;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.9);font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.1)">Acá tenés. Hay 3 sin leer, el de Juan parece urgente.</div>
+  <div class="mini-orb"><div class="ring"></div><div class="orb"></div></div>
+  <div class="orb-label">Hablando</div>
+  <div class="taskbar"><span></span><span></span><span></span><span></span></div>
+</div></div>
+
+<p class="caption">3 · Hermes maneja tus apps: pantalla dividida</p>
+<div class="wrap"><div class="frame desk">
+  <div style="position:absolute;left:0;top:0;width:720px;height:852px;background:#fff;outline:3px solid var(--accent);outline-offset:-3px">
+    <div style="height:40px;background:#1F6E43;color:#fff;display:flex;align-items:center;padding:0 14px;font-size:13px;font-weight:500">Notas 3ºB.xlsx — Excel</div>
+    <div class="grid" id="sheet"></div>
+  </div>
+  <div style="position:absolute;left:720px;top:0;width:720px;height:852px;background:#FAFBFC;outline:3px solid var(--accent);outline-offset:-3px">
+    <div style="height:40px;background:#E3E8EE;display:flex;align-items:center;padding:0 14px;font-size:13px;font-weight:500;color:#3A4250">Trabajos prácticos — Explorador de archivos</div>
+    <div id="files"></div>
+  </div>
+  <div style="position:absolute;left:50%;top:64px;transform:translateX(-50%);padding:12px 18px;border-radius:14px;background:rgba(255,255,255,.92);box-shadow:0 12px 40px rgba(0,40,90,.22);font-size:14px">✓ Acomodé <strong>Notas</strong> a la izquierda y <strong>Trabajos</strong> a la derecha</div>
+  <div class="bubble-user">“Poneme el Excel de notas a la izquierda y los trabajos a la derecha”</div>
+  <div style="position:absolute;right:150px;bottom:102px;padding:8px 12px;border-radius:999px;background:var(--accent);color:#fff;font-size:13px;font-weight:500">Hermes está usando tus apps</div>
+  <div class="mini-orb"><div class="ring" style="border-style:dashed;border-color:rgba(0,113,227,.55)"></div><div class="orb"></div></div>
+  <div class="orb-label" style="right:56px">Actuando</div>
+  <div class="taskbar"><span></span><span style="background:rgba(255,255,255,.4)"></span><span style="background:rgba(255,255,255,.4)"></span><span></span></div>
+</div></div>
+
+<script>
+const mails=[['Juan Pérez','Entrega del TP final — necesito prórroga','10:42',1],['Coordinación 3ºB','Cierre de notas del trimestre: viernes','09:15',1],['Lucía Gómez','Consulta sobre el parcial','08:58',1],['Google Drive','Te compartieron "Trabajos prácticos"','Ayer'],['Banco','Resumen de tu cuenta','Ayer'],['Martín Ruiz','Re: reunión de padres','Ayer'],['Spotify','Tu resumen de la semana','Lun'],['Secretaría','Calendario de mesas de examen','Lun'],['Ana Torres','Te paso el material de lectura','Dom'],['Newsletter','Novedades en educación','Sáb']];
+document.getElementById('mails').innerHTML=mails.map((m,i)=>`<div class="row"><span style="width:22px;font-size:12px;color:#6E6E73;text-align:right">${i+1}</span><span style="width:8px;height:8px;border-radius:50%;background:${m[3]?'var(--accent)':'transparent'}"></span><div style="flex-grow:1;min-width:0"><div style="font-size:14px;font-weight:${m[3]?600:400}">${m[0]}</div><div style="font-size:13px;color:#555A63;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m[1]}</div></div><span style="font-size:12px;color:#6E6E73">${m[2]}</span></div>`).join('');
+const st=[['Alumno','TP1','TP2','Parcial','Promedio'],['Juan Pérez','8','7','6','7,0'],['Lucía Gómez','9','9','8','8,7'],['Martín Ruiz','6','—','7','6,5'],['Ana Torres','10','9','9','9,3'],['Sofía Díaz','7','8','',''],['Tomás López','5','6','6','5,7'],['Valentina Paz','8','8','9','8,3'],['Bruno Sosa','9','','',''],['Camila Ríos','7','7','8','7,3'],['Federico Gil','6','7','5','6,0'],['Julieta Mora','9','10','9','9,3'],['Lautaro Vega','8','6','7','7,0'],['Mía Herrera','7','9','8','8,0']];
+document.getElementById('sheet').innerHTML=st.map((r,i)=>`<div style="background:#F1F3F5;color:#6E6E73;text-align:center">${i+1}</div>`+r.map((c,j)=>`<div style="font-weight:${i?400:600};${j===4&&i&&!c?'background:#FFF4E0':''}">${c}</div>`).join('')).join('');
+const files=['Sofía Díaz.pdf|Hoy 09:40','Bruno Sosa.docx|Hoy 08:12','Juan Pérez.pdf|Ayer','Camila Ríos.pdf|Ayer','Lautaro Vega.docx|Lun','Mía Herrera.pdf|Lun','Federico Gil.pdf|Dom','Julieta Mora.pdf|Dom'];
+document.getElementById('files').innerHTML=files.map(f=>{const[n,d]=f.split('|');return `<div style="display:flex;gap:12px;padding:14px 22px;border-bottom:1px solid #ECEFF2;font-size:14px"><span style="flex-grow:1">TP2 - ${n}</span><span style="font-size:12px;color:#6E6E73">${d}</span></div>`}).join('');
+// Escala los frames de 1440px al ancho de la ventana
+function fit(){document.querySelectorAll('.frame').forEach(f=>{const s=Math.min(1,(window.innerWidth-32)/1440);f.style.transform=`scale(${s})`;f.parentElement.style.height=(900*s)+'px'})}
+addEventListener('resize',fit);fit();
+</script>
+</body>
+</html>

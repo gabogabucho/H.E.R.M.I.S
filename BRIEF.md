@@ -2,7 +2,7 @@
 
 > Un plugin de Hermes que convierte tu escritorio en un **OS para agentes**.
 
-Boceto visual: https://claude.ai/artifact/F9PWUg6K2AHTZtPekJjTHa
+Boceto visual: [`docs/boceto.html`](docs/boceto.html) (abrilo en el navegador)
 
 ## La idea
 
