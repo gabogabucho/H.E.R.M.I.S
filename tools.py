@@ -11,10 +11,14 @@ from typing import Any
 from . import ws_server
 
 SURFACES = ("notification", "document")
+LEVELS = ("info", "success", "error")
 
 
 def render_surface(args: dict[str, Any], **kwargs) -> str:
     """Dibuja una superficie flotante sobre el escritorio real."""
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args",
+                      "message": "args debe ser un objeto"})
     surface = args.get("surface")
     data = args.get("data")
     if surface not in SURFACES:
@@ -23,6 +27,22 @@ def render_surface(args: dict[str, Any], **kwargs) -> str:
     if not isinstance(data, dict):
         return _json({"ok": False, "error": "invalid_data",
                       "message": "data debe ser un objeto"})
+    if surface == "notification":
+        text = data.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return _json({"ok": False, "error": "invalid_data",
+                          "message": "notification requiere data.text (string no vacío)"})
+        level = data.get("level")
+        if level is not None and level not in LEVELS:
+            return _json({"ok": False, "error": "invalid_data",
+                          "message": f"level debe ser uno de: {', '.join(LEVELS)}"})
+    elif surface == "document":
+        title, body = data.get("title"), data.get("body_markdown")
+        if (not isinstance(title, str) and not isinstance(body, str)) or (
+            title is not None and not isinstance(title, str)
+        ) or (body is not None and not isinstance(body, str)):
+            return _json({"ok": False, "error": "invalid_data",
+                          "message": "document requiere al menos title o body_markdown como string"})
     note: str | None = None
     try:
         delivered = ws_server.broadcast({"type": "render", "surface": surface, "data": data})

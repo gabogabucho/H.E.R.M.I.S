@@ -1,0 +1,8 @@
+[project]
+name = "hermis"
+version = "0.1.0"
+description = "H.E.R.M.I.S turns your Windows desktop into an agent OS: Hermes draws floating data surfaces over your real desktop and manages your real windows."
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "websockets>=15,<16",
+]

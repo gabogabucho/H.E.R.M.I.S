@@ -23,7 +23,7 @@ logger = logging.getLogger("hermis")
 def register(ctx) -> None:
     """Levanta el WS del overlay y registra las tools de Día 1."""
     try:
-        ws_server.start()
+        ws_server.start(getattr(ctx, "plugin_data_dir", None))
     except Exception as exc:  # el overlay es opcional: render_surface avisa solo
         logger.warning("no se pudo levantar el WS del overlay: %s", exc)
     ctx.register_tool(name="render_surface", toolset="hermis",

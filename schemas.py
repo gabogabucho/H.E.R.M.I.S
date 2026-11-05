@@ -19,10 +19,6 @@ def _schema(name: str, description: str, properties: dict[str, Any],
     return {"name": name, "description": description, "parameters": params}
 
 
-def _str(description: str) -> dict[str, Any]:
-    return {"type": "string", "description": description}
-
-
 RENDER_SURFACE_SCHEMA = _schema(
     "render_surface",
     "Draw a data surface floating over the user's Windows desktop (transparent "
