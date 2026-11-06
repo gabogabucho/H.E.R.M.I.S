@@ -23,11 +23,18 @@ function dataDirOverride() {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : null;
 }
 
+function defaultHermesHome() {
+  if (process.env.HERMES_HOME) return process.env.HERMES_HOME;
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, 'hermes');
+  }
+  return path.join(os.homedir(), '.hermes');
+}
+
 function overlayFilePath() {
   const dir = dataDirOverride();
   if (dir) return path.join(dir, 'overlay.json');
-  const home = process.env.HERMES_HOME || path.join(os.homedir(), '.hermes');
-  return path.join(home, 'plugin-data', 'hermis', 'overlay.json');
+  return path.join(defaultHermesHome(), 'plugin-data', 'hermis', 'overlay.json');
 }
 
 function readOverlayInfo() {
