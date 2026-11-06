@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from . import overlay_launcher
 from . import ws_server
 
 SURFACES = (
@@ -89,6 +90,16 @@ def _safe_broadcast(payload: dict[str, Any]) -> tuple[int, str | None]:
         return 0, f"broadcast falló: {exc}"
 
 
+def _maybe_start_overlay(delivered: int) -> str | None:
+    """Sin overlay conectado, intenta abrirlo (una vez por cooldown)."""
+    if delivered > 0:
+        return None
+    try:
+        return overlay_launcher.ensure_overlay_running()
+    except Exception as exc:
+        return f"no se pudo abrir el overlay: {exc}"
+
+
 def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     """Activa o desactiva el Modo Piloto Automático y persiste el estado."""
     if not isinstance(args, dict):
@@ -103,6 +114,10 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         st["surfaces"] = {}
     ws_server.save_state(st)
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
+    if active:
+        launch_note = _maybe_start_overlay(delivered)
+        if launch_note:
+            note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "state": state,
@@ -150,6 +165,9 @@ def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
         msg["id"] = surface_id
 
     delivered, note = _safe_broadcast(msg)
+    launch_note = _maybe_start_overlay(delivered)
+    if launch_note:
+        note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "id": surface_id,
@@ -179,6 +197,9 @@ def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
         st["surfaces"] = surfaces
     ws_server.save_state(st)
     delivered, note = _safe_broadcast({"type": "close", "id": target_id})
+    launch_note = _maybe_start_overlay(delivered)
+    if launch_note:
+        note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "id": target_id,

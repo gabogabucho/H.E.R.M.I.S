@@ -65,6 +65,11 @@ def _data_dir(override: Path | str | None = None) -> Path:
         return base / "plugin-data" / "hermis"
 
 
+def data_dir() -> Path:
+    """Directorio de estado efectivo del plugin (respeta el override de start())."""
+    return _data_dir(_STATE["data_dir_override"])
+
+
 def _write_overlay_info(port: int, token: str, data_dir: Path | str | None = None) -> None:
     """Puerto y token de la sesión, escritura atómica; el overlay lee esto."""
     info = {"host": _HOST, "port": port, "token": token, "pid": os.getpid()}

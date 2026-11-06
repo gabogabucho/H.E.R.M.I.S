@@ -11,11 +11,13 @@ import importlib.util
 import json
 import os
 import socket
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
@@ -28,11 +30,13 @@ hermis = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
 sys.modules["hermis"] = hermis
 _spec.loader.exec_module(hermis)  # type: ignore[union-attr]
 schemas, tools, ws_server = hermis.schemas, hermis.tools, hermis.ws_server
+overlay_launcher = hermis.overlay_launcher
 
 
 class SkeletonTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.mkdtemp()
+        os.environ["HERMIS_OVERLAY_AUTOSTART"] = "0"
         with ws_server._lock:
             ws_server._STATE["data_dir_override"] = self.tmp
             ws_server._STATE["thread"] = None
@@ -375,6 +379,149 @@ class SkeletonTest(unittest.TestCase):
                 self.assertEqual(mode_off, {"type": "mode", "autopilot": False})
 
         asyncio.run(scenario())
+
+
+class AutostartTest(unittest.TestCase):
+    """Autostart del overlay: mocks de Popen/which, nunca Electron real."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp()
+        self.fake_overlay = Path(self.tmp) / "overlay"
+        (self.fake_overlay / "node_modules").mkdir(parents=True)
+        with ws_server._lock:
+            ws_server._STATE["data_dir_override"] = self.tmp
+            ws_server._STATE["thread"] = None
+            ws_server._STATE["loop"] = None
+            ws_server._STATE["port"] = None
+            ws_server._STATE["token"] = None
+            ws_server._clients.clear()
+        os.environ["HERMIS_OVERLAY_AUTOSTART"] = "1"
+        overlay_launcher._last_launch = None
+        overlay_launcher._pipeline_busy = False
+        self.pipeline_calls: list[tuple] = []
+        self.patches = [
+            patch.object(overlay_launcher.shutil, "which", lambda cmd: f"C:\\fake\\{cmd}.exe"),
+            patch.object(overlay_launcher, "_overlay_dir", self.fake_overlay),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in self.patches:
+            p.stop()
+        os.environ["HERMIS_OVERLAY_AUTOSTART"] = "0"
+        overlay_launcher._last_launch = None
+        overlay_launcher._pipeline_busy = False
+
+    def _record_pipeline(self, npm: str, overlay_path: Path, data_dir: Path, installing: bool) -> None:
+        self.pipeline_calls.append((npm, overlay_path, data_dir, installing))
+        overlay_launcher._pipeline_busy = False
+
+    def _wait_pipeline_calls(self, count: int) -> bool:
+        for _ in range(250):
+            if len(self.pipeline_calls) >= count:
+                return True
+            time.sleep(0.02)
+        return len(self.pipeline_calls) >= count
+
+    def test_disabled_by_env(self) -> None:
+        os.environ["HERMIS_OVERLAY_AUTOSTART"] = "0"
+        self.assertIsNone(overlay_launcher.ensure_overlay_running())
+        self.assertFalse((Path(self.tmp) / "overlay.launch").exists())
+
+    def test_missing_node_returns_clear_note(self) -> None:
+        with patch.object(overlay_launcher.shutil, "which", lambda cmd: None):
+            note = overlay_launcher.ensure_overlay_running()
+        self.assertEqual(note, "instalá Node.js 20+ para ver el overlay")
+        self.assertFalse((Path(self.tmp) / "overlay.launch").exists())
+
+    def test_first_launch_installs_dependencies(self) -> None:
+        (self.fake_overlay / "node_modules").rmdir()
+        with patch.object(overlay_launcher, "_launch_pipeline", self._record_pipeline):
+            note = overlay_launcher.ensure_overlay_running()
+            self.assertEqual(note, "abriendo el overlay; la primera vez instala dependencias (~1 min)")
+            self.assertTrue(self._wait_pipeline_calls(1))
+        npm, overlay_path, data_dir, installing = self.pipeline_calls[0]
+        self.assertEqual(npm, "C:\\fake\\npm.exe")
+        self.assertEqual(overlay_path, self.fake_overlay)
+        self.assertEqual(data_dir, Path(self.tmp))
+        self.assertTrue(installing)
+        marker = json.loads((Path(self.tmp) / "overlay.launch").read_text(encoding="utf-8"))
+        self.assertAlmostEqual(marker["launched_at"], time.time(), delta=30)
+        self.assertEqual(marker["pid"], os.getpid())
+
+    def test_launch_with_modules_installed(self) -> None:
+        with patch.object(overlay_launcher, "_launch_pipeline", self._record_pipeline):
+            note = overlay_launcher.ensure_overlay_running()
+            self.assertEqual(note, "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(1))
+        self.assertFalse(self.pipeline_calls[0][3])
+
+    def test_relaunch_throttle(self) -> None:
+        with patch.object(overlay_launcher, "_launch_pipeline", self._record_pipeline):
+            self.assertEqual(overlay_launcher.ensure_overlay_running(), "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(1))
+            # dentro de la ventana de 90 s: por memoria y aunque se reinicie la memoria
+            self.assertIsNone(overlay_launcher.ensure_overlay_running())
+            overlay_launcher._last_launch = None
+            self.assertIsNone(overlay_launcher.ensure_overlay_running())
+            self.assertEqual(len(self.pipeline_calls), 1)
+            # vencido el cooldown del archivo, vuelve a lanzar
+            marker = json.loads((Path(self.tmp) / "overlay.launch").read_text(encoding="utf-8"))
+            marker["launched_at"] -= overlay_launcher._RELAUNCH_COOLDOWN_S + 5
+            (Path(self.tmp) / "overlay.launch").write_text(json.dumps(marker), encoding="utf-8")
+            self.assertEqual(overlay_launcher.ensure_overlay_running(), "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(2))
+
+    def test_pipeline_installs_then_starts_detached(self) -> None:
+        run_calls: list = []
+        popen_calls: list = []
+        with patch.object(overlay_launcher.subprocess, "run", lambda *a, **k: run_calls.append((a, k))), \
+             patch.object(overlay_launcher.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k))):
+            overlay_launcher._launch_pipeline("NPM.EXE", self.fake_overlay, Path(self.tmp), True)
+            self.assertEqual(run_calls[0][0][0], ["NPM.EXE", "ci"])
+            self.assertEqual(popen_calls[0][0][0],
+                             ["NPM.EXE", "start", "--", "--data-dir", str(Path(self.tmp))])
+            kwargs = popen_calls[0][1]
+            self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["cwd"], str(self.fake_overlay))
+            self.assertEqual(kwargs["stderr"], subprocess.STDOUT)
+            self.assertIsNotNone(kwargs["stdout"])
+            if sys.platform == "win32":
+                self.assertEqual(kwargs["creationflags"], subprocess.DETACHED_PROCESS
+                                 | subprocess.CREATE_NEW_PROCESS_GROUP
+                                 | subprocess.CREATE_NO_WINDOW)
+            else:
+                self.assertTrue(kwargs["start_new_session"])
+            self.assertTrue((Path(self.tmp) / "overlay.log").exists())
+            # con node_modules presente no vuelve a instalar
+            run_calls.clear()
+            popen_calls.clear()
+            overlay_launcher._launch_pipeline("NPM.EXE", self.fake_overlay, Path(self.tmp), False)
+        self.assertEqual(run_calls, [])
+        self.assertEqual(len(popen_calls), 1)
+
+    def test_tools_trigger_overlay_launch(self) -> None:
+        # autopilot(on) lanza el overlay y lo avisa en la note
+        with patch.object(overlay_launcher, "_launch_pipeline", self._record_pipeline):
+            res = json.loads(tools.autopilot({"state": "on"}))
+            self.assertEqual(res["note"], "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(1))
+            # encima del throttle, un render sin overlay mantiene la note genérica
+            res = json.loads(tools.render_surface({"surface": "notification",
+                                                   "data": {"text": "hola", "level": "info"}}))
+            self.assertEqual(res["note"], "overlay no conectado: la superficie no se dibujó")
+        # con node ausente, la note clara reemplaza a la genérica
+        with patch.object(overlay_launcher.shutil, "which", lambda cmd: None):
+            res = json.loads(tools.close_surface({"id": "x"}))
+        self.assertEqual(res["note"], "instalá Node.js 20+ para ver el overlay")
+
+    def test_register_never_launches_overlay(self) -> None:
+        ctx = MagicMock(plugin_data_dir=self.tmp)
+        hermis.register(ctx)
+        self.assertEqual(ctx.register_tool.call_count, 4)
+        self.assertTrue((Path(self.tmp) / "overlay.json").exists())
+        self.assertFalse((Path(self.tmp) / "overlay.launch").exists())
 
 
 async def _listen(demo: bool = False) -> None:
