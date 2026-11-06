@@ -8,6 +8,15 @@
 'use strict';
 
 const ORB_SIZE = 96;
+const ORB_RIGHT = 32;
+const ORB_BOTTOM = 72;
+// La barra de chat del boceto (pantalla 1) mide 520x64; el morph la dibuja
+// escalando el orbe, así la interpolación transform es siempre limpia.
+const BAR_SCALE_X = 520 / ORB_SIZE;
+const BAR_SCALE_Y = 64 / ORB_SIZE;
+const INTRO_MS = 2400;
+const INTRO_TEXT = '¿Qué hacemos hoy?';
+const BAR_HINT = 'Preguntale algo a Hermes…';
 const WINDOW_MARGIN = 20;
 const WINDOW_WIDTH = 480;
 const WINDOW_HEIGHT = 320;
@@ -246,6 +255,8 @@ class LumenShell extends HTMLElement {
     this.windows = new Map();
     this._interactive = false;
     this.autopilot = false;
+    this._morphAnims = [];
+    this._morphTimers = [];
   }
 
   connectedCallback() {
@@ -260,6 +271,12 @@ class LumenShell extends HTMLElement {
       <lumen-orb id="orb" state="idle"></lumen-orb>
       <div id="windows-container"></div>
       <div id="notifications-container"></div>
+      <div id="morph-layer" class="hidden">
+        <div class="morph-veil"></div>
+        <div class="morph-shape"></div>
+        <div class="morph-bar-label">${escapeHtml(BAR_HINT)}</div>
+        <div class="morph-text"></div>
+      </div>
     `;
   }
 
@@ -431,12 +448,118 @@ class LumenShell extends HTMLElement {
     if (orb && typeof state === 'string') orb.state = state;
   }
 
-  // mode: por ahora solo se muestra en el orbe (clase CSS); el morph es del Día 2.
+  // mode: morph de barra ↔ orbe. El orbe solo se ve con el piloto automático
+  // activo; si el valor no cambia no se repite la animación. La capa del morph
+  // es pointer-events: none, así los clics siguen pasando al escritorio.
   setAutopilot(on) {
+    if (on === this.autopilot) return;
     this.autopilot = on;
-    console.log('[shell] autopilot:', this.autopilot);
+    console.log('[shell] autopilot:', on);
+    this._cancelMorph();
     const orb = this.querySelector('lumen-orb');
-    if (orb) orb.classList.toggle('autopilot', on);
+    if (!orb) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (on) {
+      if (reduced) {
+        orb.classList.add('autopilot');
+        return;
+      }
+      this._playIntro(orb);
+      return;
+    }
+    const center = this._orbCenter();
+    orb.classList.remove('autopilot');
+    if (!reduced) this._playOutro(center);
+  }
+
+  _orbCenter() {
+    return {
+      x: window.innerWidth - ORB_RIGHT - ORB_SIZE / 2,
+      y: window.innerHeight - ORB_BOTTOM - ORB_SIZE / 2,
+    };
+  }
+
+  _animate(el, keyframes, opts) {
+    const anim = el.animate(keyframes, opts);
+    this._morphAnims.push(anim);
+    return anim;
+  }
+
+  _later(ms, fn) {
+    this._morphTimers.push(setTimeout(fn, ms));
+  }
+
+  _cancelMorph() {
+    for (const anim of this._morphAnims || []) {
+      try { anim.cancel(); } catch (e) { /* ya cancelada */ }
+    }
+    for (const t of this._morphTimers || []) clearTimeout(t);
+    this._morphAnims = [];
+    this._morphTimers = [];
+    const layer = this.querySelector('#morph-layer');
+    if (layer) layer.classList.add('hidden');
+  }
+
+  // Intro inmersiva (~3 s, boceto pantallas 1 y 2): velo → barra de chat en el
+  // centro → se comprime en el orbe → viaja a su lugar abajo a la derecha,
+  // texto "¿Qué hacemos hoy?" y el velo se desvanece.
+  _playIntro(orb) {
+    const layer = this.querySelector('#morph-layer');
+    const veil = layer.querySelector('.morph-veil');
+    const shape = layer.querySelector('.morph-shape');
+    const label = layer.querySelector('.morph-bar-label');
+    const text = layer.querySelector('.morph-text');
+    text.textContent = INTRO_TEXT;
+    layer.classList.remove('hidden');
+
+    const c = this._orbCenter();
+    const dx = c.x - window.innerWidth / 2;
+    const dy = c.y - window.innerHeight / 2;
+    const bar = `translate(-50%, -50%) scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`;
+    const big = 'translate(-50%, -50%) scale(1.75)';
+    const final = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`;
+
+    this._animate(veil, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'forwards', easing: 'ease-out' });
+    this._animate(shape, [
+      { transform: bar, opacity: 0 },
+      { transform: bar, opacity: 1, offset: 0.12 },
+      { transform: big, opacity: 1, offset: 0.5 },
+      { transform: final, opacity: 1 },
+    ], { duration: INTRO_MS, easing: 'cubic-bezier(0.45, 0, 0.2, 1)', fill: 'forwards' });
+    this._animate(label, [
+      { opacity: 0 },
+      { opacity: 1, offset: 0.12 },
+      { opacity: 1, offset: 0.42 },
+      { opacity: 0, offset: 0.5 },
+    ], { duration: INTRO_MS, fill: 'forwards' });
+
+    this._later(1450, () => {
+      this._animate(text, [{ opacity: 0 }, { opacity: 1 }], { duration: 450, fill: 'forwards', easing: 'ease-out' });
+    });
+    this._later(INTRO_MS + 50, () => {
+      orb.classList.add('autopilot');
+      this._animate(shape, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards', easing: 'ease-in' });
+    });
+    this._later(INTRO_MS + 250, () => {
+      this._animate(veil, [{ opacity: 1 }, { opacity: 0 }], { duration: 550, fill: 'forwards', easing: 'ease-in' });
+      this._animate(text, [{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards', easing: 'ease-in' });
+    });
+    this._later(INTRO_MS + 850, () => layer.classList.add('hidden'));
+  }
+
+  // Salida: el orbe se estira en barra y desaparece.
+  _playOutro(center) {
+    const layer = this.querySelector('#morph-layer');
+    const shape = layer.querySelector('.morph-shape');
+    layer.classList.remove('hidden');
+    const dx = center.x - window.innerWidth / 2;
+    const dy = center.y - window.innerHeight / 2;
+    const at = (extra) => `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) ${extra}`;
+    this._animate(shape, [
+      { transform: at('scale(1)'), opacity: 1 },
+      { transform: at(`scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`), opacity: 0 },
+    ], { duration: 750, easing: 'cubic-bezier(0.4, 0, 0.6, 1)', fill: 'forwards' });
+    this._later(800, () => layer.classList.add('hidden'));
   }
 
   _computePosition() {
