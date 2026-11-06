@@ -39,11 +39,11 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 2 · Sáb 7/11 — Modo Piloto Automático + superficies
 
-- [ ] Tool `autopilot(on|off)` + estado persistente del modo
-- [ ] Instrucciones del modo (`register_system_prompt_section` / `pre_llm_call`): respuestas cortas por voz, datos en superficies
+- [x] Tool `autopilot(on|off)` + estado persistente del modo
+- [x] Instrucciones del modo (`register_system_prompt_section` / `pre_llm_call`): respuestas cortas por voz, datos en superficies
 - [ ] **Morph**: barra → esfera al entrar, esfera → barra al salir
-- [ ] Superficies `email_list`, `table`, `cards`, `web`, `image`, `custom` (aislada)
-- [ ] `close_surface` + `list_surfaces`, con estado persistente (`plugin_data_dir`)
+- [x] Superficies `email_list`, `table`, `cards`, `web`, `image`, `custom` (aislada)
+- [x] `close_surface` + `list_surfaces`, con estado persistente (`plugin_data_dir`)
 - [ ] Flujo Gmail con la skill `google-workspace`: "últimos 10 correos" → `email_list`
 
 **Validación:** "Hey Jarvis, modo piloto automático" → morph → "mostrame mis últimos 10 correos" → se dibuja la lista.

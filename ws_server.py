@@ -75,6 +75,33 @@ def _write_overlay_info(port: int, token: str, data_dir: Path | str | None = Non
     logger.info("overlay.json listo (puerto %s)", port)
 
 
+def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
+    """Lee state.json del plugin_data_dir (modo piloto automático + superficies activas)."""
+    target = _data_dir(data_dir if data_dir is not None else _STATE["data_dir_override"]) / "state.json"
+    with _lock:
+        try:
+            raw = json.loads(target.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return {
+                    "autopilot": bool(raw.get("autopilot", False)),
+                    "seq": int(raw.get("seq", 0)),
+                    "surfaces": dict(raw.get("surfaces") or {}) if isinstance(raw.get("surfaces"), dict) else {},
+                }
+        except Exception:
+            pass
+        return {"autopilot": False, "seq": 0, "surfaces": {}}
+
+
+def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> None:
+    """Persiste state.json de forma atómica en plugin_data_dir."""
+    target = _data_dir(data_dir if data_dir is not None else _STATE["data_dir_override"]) / "state.json"
+    with _lock:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f"state.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, target)
+
+
 async def _handler(conn: Any) -> None:
     try:
         hello = json.loads(await asyncio.wait_for(conn.recv(), _HELLO_TIMEOUT_S))
