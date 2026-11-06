@@ -412,6 +412,7 @@ class LumenShell extends HTMLElement {
   updateWindow(id, kind, data) {
     const record = this.windows.get(id);
     if (!record) return;
+    console.log('[shell] surface actualizada en el lugar:', id);
     if (typeof data.title === 'string' && data.title) {
       record.el.setAttribute('title', data.title);
     }

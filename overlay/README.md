@@ -19,7 +19,8 @@ del plugin y dibuja lo que llega — el orbe y las superficies `notification` y
    ```
 
    El mock escribe `overlay.json` en una carpeta temporal e imprime el
-   comando siguiente.
+   comando siguiente. Para pruebas automatizadas podés usar
+   `node dev/mock-server.js --exit-after 30`: se apaga solo a los 30 s.
 
 3. En otra terminal, apuntar el overlay a esa carpeta:
 

@@ -47,6 +47,9 @@ function parseArgs(argv) {
     } else if (argv[i] === '--port' && argv[i + 1]) {
       args.port = Number(argv[i + 1]);
       i++;
+    } else if (argv[i] === '--exit-after' && argv[i + 1]) {
+      args.exitAfter = Number(argv[i + 1]);
+      i++;
     }
   }
   return args;
@@ -99,6 +102,14 @@ function main() {
   const dataDir = args.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'hermis-mock-'));
   const overlayFile = path.join(dataDir, 'overlay.json');
   const port = Number.isInteger(args.port) && args.port > 0 ? args.port : 0;
+
+  // Para pruebas automatizadas: se apaga solo a los N segundos.
+  if (Number.isFinite(args.exitAfter) && args.exitAfter > 0) {
+    setTimeout(() => {
+      console.log(`[mock] --exit-after ${args.exitAfter}s: saliendo`);
+      process.exit(0);
+    }, args.exitAfter * 1000);
+  }
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port });
   const token = crypto.randomBytes(32).toString('base64url');
