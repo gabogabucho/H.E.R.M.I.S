@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -45,7 +46,12 @@ def _data_dir(override: Path | str | None = None) -> Path:
         return Path(plugin_data_dir("hermis"))
     except Exception:
         hermes_home = os.environ.get("HERMES_HOME")
-        base = Path(hermes_home) if hermes_home else (Path.home() / ".hermes")
+        if hermes_home:
+            base = Path(hermes_home)
+        elif sys.platform == "win32":
+            base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "hermes"
+        else:
+            base = Path.home() / ".hermes"
         return base / "plugin-data" / "hermis"
 
 
