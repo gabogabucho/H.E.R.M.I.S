@@ -69,7 +69,7 @@ def _write_overlay_info(port: int, token: str, data_dir: Path | str | None = Non
     info = {"host": _HOST, "port": port, "token": token, "pid": os.getpid()}
     target = _data_dir(data_dir) / "overlay.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
+    tmp = target.with_name(f"overlay.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(info), encoding="utf-8")
     os.replace(tmp, target)
     logger.info("overlay.json listo (puerto %s)", port)
