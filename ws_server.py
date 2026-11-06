@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import secrets
-import socket
 import sys
 import threading
 from pathlib import Path
@@ -30,14 +29,21 @@ _HOST = "127.0.0.1"
 _HELLO_TIMEOUT_S = 10
 _STARTUP_TIMEOUT_S = 10.0
 
-_lock = threading.Lock()
-_loop: asyncio.AbstractEventLoop | None = None
-_port: int | None = None
-_data_dir_override: Path | str | None = None
-_clients: set[Any] = set()
-_thread: threading.Thread | None = None
-_token: str | None = None
-_ready = threading.Event()
+_STATE: dict[str, Any] = getattr(sys, "_hermis_ws_state", None) or {
+    "lock": threading.Lock(),
+    "loop": None,
+    "port": None,
+    "data_dir_override": None,
+    "clients": set(),
+    "thread": None,
+    "token": None,
+    "ready": threading.Event(),
+    "handler": None,
+}
+setattr(sys, "_hermis_ws_state", _STATE)
+_lock: threading.Lock = _STATE["lock"]
+_clients: set[Any] = _STATE["clients"]
+_ready: threading.Event = _STATE["ready"]
 
 
 def _data_dir(override: Path | str | None = None) -> Path:
@@ -77,12 +83,13 @@ async def _handler(conn: Any) -> None:
             await conn.close(code=4400, reason="hello timeout o mensaje inválido")
         return
     tok = hello.get("token") if isinstance(hello, dict) else None
+    expected = _STATE["token"]
     if (
         not isinstance(hello, dict)
         or hello.get("type") != "hello"
         or not isinstance(tok, str)
-        or _token is None
-        or not secrets.compare_digest(tok, _token)
+        or expected is None
+        or not secrets.compare_digest(tok, expected)
     ):
         with contextlib.suppress(Exception):
             await conn.close(code=4401, reason="token inválido")
@@ -109,22 +116,27 @@ async def _handler(conn: Any) -> None:
             _clients.discard(conn)
 
 
+_STATE["handler"] = _handler
+
+
+async def _dispatch(conn: Any) -> None:
+    await _STATE["handler"](conn)
+
+
 async def _serve(token: str, data_dir: Path | str | None = None) -> None:
     from websockets.asyncio.server import serve
 
-    async with serve(_handler, _HOST, 0) as server:
-        global _loop, _port
+    async with serve(_dispatch, _HOST, 0) as server:
         port = server.sockets[0].getsockname()[1]
         with _lock:
-            _loop = asyncio.get_running_loop()
-            _port = port
+            _STATE["loop"] = asyncio.get_running_loop()
+            _STATE["port"] = port
         _write_overlay_info(port, token, data_dir)
         _ready.set()
         await server.serve_forever()
 
 
 def _run(token: str, data_dir: Path | str | None = None) -> None:
-    global _loop, _port
     coro = _serve(token, data_dir)
     try:
         asyncio.run(coro)
@@ -133,40 +145,70 @@ def _run(token: str, data_dir: Path | str | None = None) -> None:
         logger.warning("servidor WS del overlay terminó: %s", exc)
     finally:
         with _lock:
-            _loop = None
-            _port = None
+            _STATE["loop"] = None
+            _STATE["port"] = None
         _ready.set()
 
 
 def _probe_existing_server(data_dir: Path | str | None = None) -> bool:
-    """Devuelve True si otro proceso ya tiene un WS activo en overlay.json."""
+    """Devuelve True si OTRO proceso ya tiene un WS válido en overlay.json."""
     try:
         info = json.loads((_data_dir(data_dir) / "overlay.json").read_text(encoding="utf-8"))
-        with socket.create_connection((info["host"], int(info["port"])), timeout=0.3):
-            return True
+        if info.get("pid") == os.getpid():
+            return False
     except Exception:
         return False
+
+    async def _check() -> bool:
+        from websockets.asyncio.client import connect
+
+        uri = f"ws://{info['host']}:{info['port']}"
+        async with connect(uri, open_timeout=0.4, close_timeout=0.2) as conn:
+            await conn.send(json.dumps({"type": "hello", "token": info["token"], "role": "publisher"}))
+            ack = json.loads(await asyncio.wait_for(conn.recv(), timeout=0.4))
+            return isinstance(ack, dict) and ack.get("type") == "hello_ok"
+
+    out = [False]
+
+    def _runner() -> None:
+        coro = _check()
+        try:
+            out[0] = asyncio.run(coro)
+        except Exception:
+            coro.close()
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join(timeout=1.0)
+    return out[0]
 
 
 def start(data_dir: Path | str | None = None) -> None:
     """Levanta el servidor WS una sola vez (idempotente, hilo daemon)."""
-    global _thread, _token, _data_dir_override
     with _lock:
         if data_dir is not None:
-            _data_dir_override = data_dir
-        if _thread is not None and _thread.is_alive():
+            _STATE["data_dir_override"] = data_dir
+        thread: threading.Thread | None = _STATE["thread"]
+        if thread is not None and thread.is_alive():
             return
-        if _probe_existing_server(_data_dir_override):
+        override = _STATE["data_dir_override"]
+    if _probe_existing_server(override):
+        return
+    with _lock:
+        thread = _STATE["thread"]
+        if thread is not None and thread.is_alive():
             return
         _ready.clear()
-        _token = secrets.token_urlsafe(32)
-        _thread = threading.Thread(
-            target=_run, args=(_token, _data_dir_override), daemon=True, name="hermis-ws"
+        token = secrets.token_urlsafe(32)
+        _STATE["token"] = token
+        thread = threading.Thread(
+            target=_run, args=(token, _STATE["data_dir_override"]), daemon=True, name="hermis-ws"
         )
-        _thread.start()
+        _STATE["thread"] = thread
+        thread.start()
     _ready.wait(timeout=_STARTUP_TIMEOUT_S)
     with _lock:
-        started = _ready.is_set() and _loop is not None
+        started = _ready.is_set() and _STATE["loop"] is not None
     if not started:
         logger.warning("el WS no arrancó en %ss; render_surface entregará 0 clientes",
                        _STARTUP_TIMEOUT_S)
@@ -175,9 +217,9 @@ def start(data_dir: Path | str | None = None) -> None:
 def _relay_to_overlay_server(obj: dict[str, Any]) -> int:
     """Si otro proceso de Hermes es dueño de overlay.json, publica vía WS local."""
     try:
-        info = json.loads((_data_dir(_data_dir_override) / "overlay.json").read_text(encoding="utf-8"))
+        info = json.loads((_data_dir(_STATE["data_dir_override"]) / "overlay.json").read_text(encoding="utf-8"))
         with _lock:
-            if _loop is not None and info.get("port") == _port:
+            if _STATE["loop"] is not None and info.get("port") == _STATE["port"]:
                 return 0
     except Exception:
         return 0
@@ -216,7 +258,7 @@ def broadcast(obj: dict[str, Any]) -> int:
     Devuelve la cantidad de clientes a los que se les encoló el envío.
     """
     with _lock:
-        loop, count = _loop, len(_clients)
+        loop, count = _STATE["loop"], len(_clients)
     if loop is not None and count > 0:
         loop.call_soon_threadsafe(_send_all, json.dumps(obj, ensure_ascii=False))
         return count

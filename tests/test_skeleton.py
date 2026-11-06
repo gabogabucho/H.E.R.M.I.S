@@ -83,15 +83,9 @@ class SkeletonTest(unittest.TestCase):
                 })
 
                 # Simula 2do proceso (gateway) publicando vía relay hacia overlay.json
-                relayed = ws_server._relay_to_overlay_server({
-                    "type": "render",
-                    "surface": "notification",
-                    "data": {"text": "desde gateway", "level": "info"},
-                })
-                # Cuando _port coincide con overlay.json local, forzamos _port distinto para probar el relay WS real
                 with ws_server._lock:
-                    real_port = ws_server._port
-                    ws_server._port = -1
+                    real_port = ws_server._STATE["port"]
+                    ws_server._STATE["port"] = -1
                 try:
                     relayed = ws_server._relay_to_overlay_server({
                         "type": "render",
@@ -100,10 +94,22 @@ class SkeletonTest(unittest.TestCase):
                     })
                 finally:
                     with ws_server._lock:
-                        ws_server._port = real_port
+                        ws_server._STATE["port"] = real_port
                 self.assertEqual(relayed, 1)
                 msg2 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(msg2["data"]["text"], "desde gateway")
+
+                # Simula hot-reload (_evict_modules) de Hermes: preserva _STATE, loop, port y clientes conectados
+                spec_ws = importlib.util.spec_from_file_location("hermis.ws_server", ROOT / "ws_server.py")
+                reloaded_ws = importlib.util.module_from_spec(spec_ws)  # type: ignore[arg-type]
+                sys.modules["hermis.ws_server"] = reloaded_ws
+                spec_ws.loader.exec_module(reloaded_ws)  # type: ignore[union-attr]
+                reloaded_ws.start(data_dir=tmp)
+                self.assertEqual(reloaded_ws._STATE["port"], info["port"])
+                self.assertEqual(len(reloaded_ws._STATE["clients"]), 1)
+                self.assertEqual(reloaded_ws.broadcast({"type": "render", "surface": "notification", "data": {"text": "post-reload"}}), 1)
+                msg3 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(msg3["data"]["text"], "post-reload")
 
         asyncio.run(scenario())
 
