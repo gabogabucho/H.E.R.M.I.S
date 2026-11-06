@@ -25,13 +25,15 @@ Make the autopilot tool publish the `x-lumen-desktop v2` mode message and prove 
   - Functional checks: `python -m unittest tests.test_skeleton.SkeletonTest.test_ws_handshake_and_broadcast -v` — passed; `python -m unittest discover -s tests -v` — 3 tests passed.
   - Local docs: `BRIEF.md` already had the correct v2 example `{ "type": "mode", "autopilot": true }`, so no doc edit was needed.
   - Rollback boundary: revert only the autopilot message change, its regression assertions, and the matching local protocol example; no unrelated behavior is involved.
-  - Commit identity: pending; parent will coordinate commit after review.
+  - Work-unit commit: `71bee14` (`fix(autopilot): emit mode events for overlay transitions`).
+  - Parent spot check: `python -m unittest discover -s tests -v` passed all 3 tests (0.393s); `git diff --check` passed.
+  - Native assessment: RDD on (global), risk `medium`, 51 changed lines, `review_due: false`, reason `under_budget`, base `77626064b626663bd4656c440fee3f95c63e3f36`. Review remains pending in the slice; no approval is claimed.
 
 ## PR body example corrections for parent
 - Replace the stale bullet `{ "type": "autopilot", "state": "on" | "off" }` with `{ "type": "mode", "autopilot": true | false }`.
 - Replace the stale historical live-received line `{ "type": "autopilot", "state": "on" }` with a clearly labeled current expected/retested example `{ "type": "mode", "autopilot": true }`. Do not present the old line as a newly observed trace.
 
 ## Progress and persistence
-- Progress: implementation and regression coverage complete; no source formatter or normalizer was run. Candidate remains uncommitted for parent review.
+- Progress: implementation and regression coverage complete in `71bee14`; no source formatter or normalizer was run. Current authored work-unit count: 51 changed lines before this evidence update.
 - Engram mirror: pending; parent reports host session registration blocks `mem_save`, and instructed not to retry.
-- Next: parent performs native risk/review flow and coordinates commit. The two PR body examples above remain remote-update suggestions only.
+- Next: push the verified commit and update the two PR body examples only when remote delivery is authorized. No push, remote edit, or merge was performed.
