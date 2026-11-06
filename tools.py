@@ -235,7 +235,10 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
         lines.append(
             "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO]\n"
             "- Respondé en 1–2 frases cortas para ser habladas por voz (no leas listas ni markdown en voz alta).\n"
-            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) mostralo con `render_surface`."
+            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) mostralo con `render_surface`.\n"
+            "- Correo: leé Gmail con la skill `google-workspace` y mostrá el resultado con `render_surface` "
+            "surface=email_list (items con id, from, subject, snippet, date y body_markdown si lo hay); "
+            "'abrí el de Juan' o 'abrí el tercero' se resuelven con lo que ya figura en pantalla, sin volver a leer."
         )
     if surfaces:
         lines.append("[Superficies abiertas en pantalla]")

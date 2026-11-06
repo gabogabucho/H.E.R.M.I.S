@@ -125,6 +125,8 @@ class SkeletonTest(unittest.TestCase):
         self.assertIsInstance(hook_res, dict)
         ctx_text = hook_res["context"]  # type: ignore[index]
         self.assertIn("Modo Piloto Automático ACTIVO", ctx_text)
+        self.assertIn("google-workspace", ctx_text)
+        self.assertIn("surface=email_list", ctx_text)
         self.assertIn("Juan Pérez", ctx_text)
         self.assertIn("Hola, adjunto el TP final.", ctx_text)
 
