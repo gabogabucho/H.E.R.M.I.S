@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import os
+import socket
 import sys
 import tempfile
 import unittest
@@ -135,6 +137,106 @@ class SkeletonTest(unittest.TestCase):
         ap_off = json.loads(tools.autopilot({"state": "off"}))
         self.assertFalse(ap_off["autopilot"])
         self.assertIsNone(tools.pre_llm_call())
+
+    def test_broadcast_takes_over_dead_owner(self) -> None:
+        # overlay.json apunta al puerto de un dueño caído: broadcast toma el relevo
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        dead_port = dead.getsockname()[1]
+        dead.close()
+        (Path(self.tmp) / "overlay.json").write_text(json.dumps(
+            {"host": "127.0.0.1", "port": dead_port, "token": "x", "pid": os.getpid() + 4321},
+        ), encoding="utf-8")
+
+        delivered = ws_server.broadcast({"type": "render", "surface": "notification",
+                                         "data": {"text": "nada", "level": "info"}})
+        self.assertEqual(delivered, 0)
+        info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["pid"], os.getpid())
+        self.assertNotEqual(info["port"], dead_port)
+
+        async def scenario() -> None:
+            async with connect(f"ws://{info['host']}:{info['port']}") as client:
+                await client.send(json.dumps({"type": "hello", "token": info["token"]}))
+                self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
+                                 {"type": "mode", "autopilot": False})
+                self.assertEqual(ws_server.broadcast({"type": "render", "surface": "notification",
+                                                      "data": {"text": "llegó", "level": "info"}}), 1)
+                msg = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(msg["data"]["text"], "llegó")
+
+        asyncio.run(scenario())
+
+        # Luego de tomar el relevo, los reintentos no relanzan ni reescriben nada
+        info2 = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        self.assertEqual(info2, info)
+
+    def test_broadcast_no_takeover_on_invalid_token(self) -> None:
+        # Servidor ajeno vivo que rechaza el token: no tomamos el relevo
+        foreign_pid = os.getpid() + 4321
+        results: dict[str, object] = {}
+
+        async def scenario() -> None:
+            from websockets.asyncio.server import serve
+
+            async def reject(conn: object) -> None:
+                hello = json.loads(await asyncio.wait_for(conn.recv(), timeout=2.0))
+                if not isinstance(hello, dict) or hello.get("token") != "real":
+                    await conn.close(code=4401, reason="token inválido")
+                    return
+                await conn.send(json.dumps({"type": "hello_ok"}))
+                async for _ in conn:
+                    pass
+
+            async with serve(reject, "127.0.0.1", 0) as server:
+                port = server.sockets[0].getsockname()[1]
+                (Path(self.tmp) / "overlay.json").write_text(json.dumps(
+                    {"host": "127.0.0.1", "port": port, "token": "wrong", "pid": foreign_pid},
+                ), encoding="utf-8")
+                loop = asyncio.get_running_loop()
+                results["delivered"] = await loop.run_in_executor(
+                    None, lambda: ws_server.broadcast({"type": "render", "surface": "notification",
+                                                       "data": {"text": "x", "level": "info"}}))
+                results["port"] = port
+
+        asyncio.run(scenario())
+        self.assertEqual(results["delivered"], 0)
+        info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["pid"], foreign_pid)
+        self.assertEqual(info["port"], results["port"])
+        with ws_server._lock:
+            self.assertIsNone(ws_server._STATE["thread"])
+
+    def test_broadcast_rewrites_overlay_json_when_we_have_server(self) -> None:
+        # Nuestro servidor vive pero overlay.json fue tapado por un dueño muerto: re-publicamos
+        ctx = MagicMock(plugin_data_dir=self.tmp)
+        hermis.register(ctx)
+        ours = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        dead_port = dead.getsockname()[1]
+        dead.close()
+        (Path(self.tmp) / "overlay.json").write_text(json.dumps(
+            {"host": "127.0.0.1", "port": dead_port, "token": "x", "pid": os.getpid() + 4321},
+        ), encoding="utf-8")
+
+        delivered = ws_server.broadcast({"type": "render", "surface": "notification",
+                                         "data": {"text": "x", "level": "info"}})
+        self.assertEqual(delivered, 0)
+        info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["pid"], os.getpid())
+        self.assertEqual(info["port"], ours["port"])
+        self.assertEqual(info["token"], ours["token"])
+
+        async def scenario() -> None:
+            async with connect(f"ws://{info['host']}:{info['port']}") as client:
+                await client.send(json.dumps({"type": "hello", "token": info["token"]}))
+                self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
+                                 {"type": "mode", "autopilot": False})
+
+        asyncio.run(scenario())
 
     def test_sync_on_connect(self) -> None:
         # Estado previo sin overlay conectado: autopilot on + superficies persistidas
