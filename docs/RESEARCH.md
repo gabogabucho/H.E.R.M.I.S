@@ -8,7 +8,7 @@
 
 - **El Desktop Plugin SDK NO reemplaza a nuestro Electron.** Los plugins desktop viven solo DENTRO de la ventana de Hermes Desktop (panes, statusbar, palette…); no pueden crear ventanas del SO ni overlays always-on-top — esas features del core no están expuestas al SDK. VERIFICADO.
 - **Electron sí es viable para el catálogo**, con disclosure: hay precedentes — `spotify-desktop` ("Electron status-bar player plus a dashboard-API backend") y el plugin oficial `snyk`, que corre por `npx` con versión pineada. Nada de binarios commiteados; `npm i electron` + `npx electron` pineado pasa como patrón aceptado. VERIFICADO el precedente, INFERIDO la aceptación exacta del combo.
-- **Nos ahorramos construir**: wake word (frase default "jarvis", Win x64 ok), STT/TTS (faster-whisper local en Win x64 + Edge TTS gratis), clics/teclado/leer UI (`computer_use` sobre cua-driver/UIAutomation), **listar ventanas y enfocar apps** (acciones `list_windows`/`list_apps`/`focus_app`), y todo el lado Gmail (skill google-workspace con OAuth gestionada por Hermes). VERIFICADO.
+- **Nos ahorramos construir**: wake word (frase default "hey hermes", Win x64 ok), STT/TTS (faster-whisper local en Win x64 + Edge TTS gratis), clics/teclado/leer UI (`computer_use` sobre cua-driver/UIAutomation), **listar ventanas y enfocar apps** (acciones `list_windows`/`list_apps`/`focus_app`), y todo el lado Gmail (skill google-workspace con OAuth gestionada por Hermes). VERIFICADO.
 - **Seguimos construyendo**: el overlay Electron + WebSocket (nadie en el catálogo hace overlay a nivel SO — es nuestro diferencial), `layout_windows` (no hay move/resize de ventanas en Hermes) y `launch_app` (no está en el core; THEIA lo agrega como tools propias — precedente válido). VERIFICADO.
 - **La bola se anima con eventos reales**: el gateway emite `voice.status`, `voice.partial`, `voice.interrupted` y `wake.detected` por WebSocket; el overlay puede conectarse como cliente. En Python no hay hooks de voz (solo `pre_transcription`). VERIFICADO los eventos, INFERIDO la conexión del overlay como cliente.
 
@@ -20,6 +20,8 @@
 >
 > ❌ **Error del informe:** la frase por defecto de la wake word es **"hey hermes"**, no "jarvis" (`hermes_cli/config_defaults.py:1257`; la doc dice *"Porcupine's default keyword is \"jarvis\""*). Para "hey jarvis" gratis: `wake_word.openwakeword.model: hey_jarvis`, un modelo incluido en openWakeWord (`config_defaults.py:1266`). Corregir donde el informe dice "default jarvis".
 >
+> ❌ **Segunda corrección (6/11, probado en vivo por armyv7v y verificado en `tools/wake_word.py:86`):** Hermes usa `pyopen-wakeword` y **solo trae `hey_hermes.tflite`** (`_BUNDLED_MODEL_ALIASES = {"", "hey_hermes", "hey hermes", "hermes"}`). Cualquier otro valor de `model` se toma como ruta de archivo: con `model: hey_jarvis` Hermes se cae. Para "hey jarvis" hay que bajar `hey_jarvis_v0.1.tflite` de openWakeWord y poner su ruta absoluta. **Decisión: usamos "Hey Hermes".**
+>
 > ⚠️ **El informe no destaca esto:** Hermes Desktop ya trae un **HUD** (⌘/Ctrl+Shift+H). Saca el chat a una barra flotante, sin marco y siempre arriba, con clics que pasan a través, *"sobre lo que estés trabajando"*. Su posición en pantalla es contexto: "esto", "acá" y "esa página" se refieren a lo que tiene debajo. **Un overlay flotante sobre el escritorio, solo, NO es diferencial.** El diferencial es que **el agente dibuja superficies de datos** (correos, tablas, tarjetas) y **acomoda ventanas reales**; el HUD es un chat, no un lienzo. Esto hay que dejarlo explícito en el pitch y en la demo.
 
 ---
@@ -28,7 +30,7 @@
 
 | Componente planeado | ¿Hermes ya lo provee? | Cómo | V/I | Fuente |
 |---|---|---|---|---|
-| Wake word "hey hermes"/"jarvis" | ✅ Sí | `wake_word.phrase` (default "jarvis"); motores openWakeWord (Win x64), sherpa (ARM64), Porcupine (key) | V | `website/docs/user-guide/features/wake-word.md` |
+| Wake word "hey hermes" | ✅ Sí | `wake_word.phrase` (default "hey hermes"); motores openWakeWord (Win x64), sherpa (ARM64), Porcupine (key) | V | `website/docs/user-guide/features/wake-word.md` |
 | STT (voz a texto) | ✅ Sí | Voice mode con faster-whisper **local** en Win x64 (excluido solo ARM64/Intel Mac); nube: groq/openai/mistral/xai/elevenlabs/deepinfra | V | `website/docs/user-guide/features/voice-mode.md` |
 | TTS (respuesta hablada) | ✅ Sí | `tts.provider: edge` default, gratis sin key; + elevenlabs/openai/piper/etc. | V | ídem |
 | Clics, teclado, leer la UI | ✅ Sí | Tool `computer_use` (cua-driver Rust v0.21.0 vía MCP stdio; Windows: UIAutomation + SendInput) | V | `tools/computer_use/schema.py` |
@@ -92,7 +94,7 @@ platforms:
 
 ## 4. Voz y wake word en Windows x64
 
-- **Wake word funciona en Win x64**: openWakeWord (default `auto`), sherpa (ARM64), Porcupine (pide key). Frase por defecto: **"jarvis"**. Corre en CLI/TUI/Desktop (`wake_word.surface: auto|cli|tui|gui`); no corre en gateway. Troubleshooting Windows específico: si "escucha pero recibe silencio", fijar `wake_word.input_device`. **VERIFICADO** (`website/docs/user-guide/features/wake-word.md`).
+- **Wake word funciona en Win x64**: openWakeWord (default `auto`), sherpa (ARM64), Porcupine (pide key). Frase por defecto: **"hey hermes"** (ver corrección arriba). Corre en CLI/TUI/Desktop (`wake_word.surface: auto|cli|tui|gui`); no corre en gateway. Troubleshooting Windows específico: si "escucha pero recibe silencio", fijar `wake_word.input_device`. **VERIFICADO** (`website/docs/user-guide/features/wake-word.md`).
 - **Voice mode funciona en Win x64**: STT local faster-whisper soportado (excluido solo en Win ARM64 e Intel Mac); TTS default `edge` gratis sin key; conversación continua con barge-in; streaming. **VERIFICADO** (`voice-mode.md`).
 - **Keys de config.yaml** (`hermes_cli/config_defaults.py`, `cli-config.yaml.example`):
   - `wake_word.{enabled, surface, input_device, capture, provider(auto|openwakeword|sherpa|porcupine), phrase, sensitivity, confirmation_frames, start_new_session, profile_routing, openwakeword.model, porcupine.keyword}`
@@ -134,7 +136,7 @@ platforms:
   - `spotify-desktop` — Electron status-bar player + backend dashboard API (precedente clave para nosotros). `hermes-taskbar-badge` — badge de taskbar Windows. **VERIFICADO**.
   - THEIA `hermes-windows-computer-use` — 37+ tools de computer-use Windows (incluye `computer_use_open_app`, `computer_use_focus_window`, `computer_use_get_active_window`); control por captura+acción, sin UI. Suite `hermes-windows-ops/process/tasks/ports/...`. **VERIFICADO**.
 - **Comunidad:** hermes-webui (19.4k★), fathah/hermes-desktop (14.5k★), awesome-hermes-agent (sección "surfaces"), oh-my-hermes (5.1k★), Hermes-CN-Desktop (Tauri, Windows-first). **Nadie hace overlay de UI generativa a nivel SO en Windows dirigido por Hermes.** **VERIFICADO** las búsquedas, **INFERIDO** el gap.
-- **Posicionamiento:** los jueces ya tienen referencias "más que un prompt" (THEIA, orbit-desktop). Nuestro moat: el agente **dibuja sobre el sistema operativo** (superficies flotantes fuera de toda app) y **manipula ventanas reales** — el SDK oficial no puede hacer ninguna de las dos por diseño. La voz/wake word de Hermes ya usa "jarvis" como default: el imaginario Jarvis es parte del pitch oficial de Nous. **VERIFICADO**.
+- **Posicionamiento:** los jueces ya tienen referencias "más que un prompt" (THEIA, orbit-desktop). Nuestro moat: el agente **dibuja sobre el sistema operativo** (superficies flotantes fuera de toda app) y **manipula ventanas reales** — el SDK oficial no puede hacer ninguna de las dos por diseño. La wake word por defecto de Hermes es "hey hermes" (ver corrección arriba).
 
 ## 8. Reuso de Lumen OS
 
@@ -230,7 +232,7 @@ Notas: capabilities deben coincidir EXACTO con lo registrado en `register()` (el
 5. **Estado "speaking" de la bola:** `voice.status` cubre idle/listening/transcribing; el momento exacto de "TTS hablando" hay que confirmarlo (o aproximarlo con `post_llm_call`). Verificar con el protocolo real.
 6. **`pre_llm_call` con timeout de 30 s:** la inyección de contexto de pantalla debe leer un cache (superficies + lista de ventanas ya relevadas), nunca capturar en caliente.
 7. **Repo privado → público** antes del PR al catálogo (regla). Ya está en BRIEF.
-8. **Wake word en Desktop app (surface `gui`):** confirmar en la máquina real que "jarvis" despierta con Hermes Desktop en Windows (pendiente del Día 0 del ROADMAP).
+8. **Wake word en Desktop app (surface `gui`):** confirmar en la máquina real que "hey hermes" despierta con Hermes Desktop en Windows (pendiente del Día 0 del ROADMAP).
 9. **Flujo email real:** sin tools `gmail_*`, "últimos 10 correos" depende de que el agente use la skill google-workspace; probar el flujo punta a punta (Día 2) y tener IMAP como plan B.
 10. **Hook ausente:** si la bola necesita estados de voz desde Python (sin depender del cliente gateway), pedirlo como issue upstream ("If a public hook you need is missing, open an issue" — política oficial del plugin system).
 
