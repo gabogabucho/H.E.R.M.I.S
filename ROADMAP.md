@@ -28,8 +28,8 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 - [ ] `plugin.yaml` + `pyproject.toml` (dependencias con piso y techo) + `__init__.py` con `register(ctx)`
 - [ ] Servidor WebSocket local (127.0.0.1 + token) levantado por el plugin
-- [ ] Overlay Electron (`npx electron@<versión fija>`): transparente, pantalla completa, siempre arriba, los clics pasan donde no hay nada dibujado
-- [ ] Shell de Lumen portado: orbe + contenedor de superficies + adaptador de mensajes
+- [x] Overlay Electron (`npx electron@<versión fija>`): transparente, pantalla completa, siempre arriba, los clics pasan donde no hay nada dibujado
+- [x] Shell de Lumen portado: orbe + contenedor de superficies + adaptador de mensajes
 - [ ] Tool `render_surface` con `notification` y `document`
 - [ ] `hermes plugins doctor --ci` y `hermes plugins validate . --install-deps` en verde
 
