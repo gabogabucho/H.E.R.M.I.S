@@ -6,7 +6,7 @@
 - Investigación técnica: [`docs/RESEARCH.md`](docs/RESEARCH.md)
 - Plan: [`ROADMAP.md`](ROADMAP.md)
 
-> **Estado: propuesta.** No se escribe código hasta que el equipo apruebe la propuesta (ver issue "Propuesta: Modo Piloto Automático").
+> **Estado: en desarrollo (Día 1).** Propuesta aprobada por el equipo (#5).
 
 ## La idea
 
@@ -117,9 +117,9 @@ Superficies iniciales: `notification`, `document`, `email_list`, `table`, `cards
 
 | Tema | Decisión | Estado |
 |---|---|---|
-| Concepto | Modo Piloto Automático: el escritorio como OS para agentes | ✅ propuesto, falta aprobación del equipo |
-| Orbe | **Opción B**: orbe propio en nuestro overlay, con morph | ✅ propuesto, falta aprobación del equipo |
-| Respaldo del orbe | Pet personalizada de Hermes | ✅ propuesto |
+| Concepto | Modo Piloto Automático: el escritorio como OS para agentes | ✅ aprobado (#5) |
+| Orbe | **Opción B**: orbe propio en nuestro overlay, con morph | ✅ aprobado (#5) |
+| Respaldo del orbe | Pet personalizada de Hermes | ✅ aprobado (#5) |
 | HUD de Hermes | No se toca (prohibido por el catálogo); el morph es nuestro | ✅ |
 | Renderer | Electron aparte, `npx` con versión fija | ✅ |
 | Protocolo | `x-lumen-desktop v2` + mensaje `mode` | ✅ |

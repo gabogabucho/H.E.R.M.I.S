@@ -3,11 +3,11 @@
 **Fecha límite: miércoles 11/11/2026, 17:00 EST (19:00 hora de Argentina).**
 Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atrasa, se recorta alcance, no se corre la entrega.
 
-> **Bloqueo actual:** no se escribe código hasta que el equipo apruebe la propuesta del Modo Piloto Automático (issue "Propuesta: Modo Piloto Automático").
+> **Estado actual:** Propuesta aprobada (#5) · Día 0 completado ✅ · Día 1 (lado plugin Python) listo, a la espera del PR del overlay Electron.
 
 ---
 
-## Día 0 · Jue 5/11 — Concepto, investigación y spike ⏳
+## Día 0 · Jue 5/11 — Concepto, investigación y spike ✅
 
 - [x] Reglas del hackathon y guía de plugins leídas
 - [x] Concepto: Modo Piloto Automático, el escritorio como OS para agentes
@@ -16,9 +16,9 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] Investigación técnica (`docs/RESEARCH.md`): qué trae Hermes y qué construimos
 - [x] Reglas del catálogo confirmadas
 - [x] Decisión del orbe: opción B (orbe propio con morph), Pet de Hermes como respaldo
-- [ ] **Aprobación del equipo** de la propuesta
-- [ ] Hermes instalado en Windows: `/voice on`, `/wake on` (frase por defecto "hey hermes"), `hermes computer-use doctor` en verde
-- [ ] Confirmar puerto y autenticación del WS del gateway (para `voice.status` / `wake.detected`)
+- [x] **Aprobación del equipo** de la propuesta
+- [x] Hermes instalado en Windows: `/voice on`, `/wake on` (frase por defecto "hey hermes"), `hermes computer-use doctor` en verde
+- [x] Confirmar puerto y autenticación del WS del gateway (para `voice.status` / `wake.detected`)
 
 **Validación:** decís "hey hermes", Hermes te responde por voz y hace un clic con computer use.
 
@@ -26,12 +26,12 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 1 · Vie 6/11 — Esqueleto + el primer dibujo
 
-- [ ] `plugin.yaml` + `pyproject.toml` (dependencias con piso y techo) + `__init__.py` con `register(ctx)`
-- [ ] Servidor WebSocket local (127.0.0.1 + token) levantado por el plugin
+- [x] `plugin.yaml` + `pyproject.toml` (dependencias con piso y techo) + `__init__.py` con `register(ctx)`
+- [x] Servidor WebSocket local (127.0.0.1 + token) levantado por el plugin
 - [ ] Overlay Electron (`npx electron@<versión fija>`): transparente, pantalla completa, siempre arriba, los clics pasan donde no hay nada dibujado
 - [ ] Shell de Lumen portado: orbe + contenedor de superficies + adaptador de mensajes
-- [ ] Tool `render_surface` con `notification` y `document`
-- [ ] `hermes plugins doctor --ci` y `hermes plugins validate . --install-deps` en verde
+- [x] Tool `render_surface` con `notification` y `document`
+- [x] `hermes plugins doctor --ci` y `hermes plugins validate . --install-deps` en verde
 
 **Validación:** le escribís "mostrame un doc con X" → aparece flotando sobre el escritorio.
 
