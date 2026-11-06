@@ -85,21 +85,48 @@ class SkeletonTest(unittest.TestCase):
         asyncio.run(scenario())
 
 
-async def _listen() -> None:
+async def _listen(demo: bool = False) -> None:
+    if demo:
+        ws_server.start()
     overlay_file = ws_server._data_dir() / "overlay.json"
-    info = json.loads(overlay_file.read_text(encoding="utf-8"))
-    uri = f"ws://{info['host']}:{info['port']}"
-    async with connect(uri) as conn:
-        await conn.send(json.dumps({"type": "hello", "token": info["token"]}))
-        print(await conn.recv(), flush=True)
-        async for raw in conn:
-            print(raw, flush=True)
+    warned = False
+    while True:
+        try:
+            info = json.loads(overlay_file.read_text(encoding="utf-8"))
+            uri = f"ws://{info['host']}:{info['port']}"
+            async with connect(uri) as conn:
+                await conn.send(json.dumps({"type": "hello", "token": info["token"]}))
+                print(f"[hermis] conectado a {uri} -> {await conn.recv()}", flush=True)
+                warned = False
+                if demo:
+                    tools.render_surface({
+                        "surface": "notification",
+                        "data": {"text": "Modo Piloto Automático listo", "level": "success"},
+                    })
+                    tools.render_surface({
+                        "surface": "document",
+                        "data": {"title": "Demo Día 1", "body_markdown": "# H.E.R.M.I.S\n- Servidor WS activo\n- Superficies listas"},
+                    })
+                    print(await conn.recv(), flush=True)
+                    print(await conn.recv(), flush=True)
+                    return
+                async for raw in conn:
+                    print(raw, flush=True)
+        except (OSError, json.JSONDecodeError, KeyError):
+            if not warned:
+                print(
+                    f"[hermis] esperando servidor WS activo en {overlay_file} "
+                    "(abrí una sesión de 'hermes' en otra terminal, o probá con '--demo')…",
+                    flush=True,
+                )
+                warned = True
+            await asyncio.sleep(2.0)
 
 
 if __name__ == "__main__":
-    if "--listen" in sys.argv:
+    if "--listen" in sys.argv or "--demo" in sys.argv:
         try:
-            asyncio.run(_listen())
+            asyncio.run(_listen(demo="--demo" in sys.argv))
         except KeyboardInterrupt:
             pass
     else:
