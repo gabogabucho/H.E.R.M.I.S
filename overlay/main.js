@@ -213,8 +213,8 @@ function createWindow() {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('console-message', (event, level, message) => {
-    console.log('[renderer]', typeof message === 'string' ? message : event.message);
+  win.webContents.on('console-message', (event) => {
+    console.log('[renderer]', event.message);
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.showInactive();
