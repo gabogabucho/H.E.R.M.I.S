@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 import sys
 import threading
 from pathlib import Path
@@ -31,6 +32,8 @@ _STARTUP_TIMEOUT_S = 10.0
 
 _lock = threading.Lock()
 _loop: asyncio.AbstractEventLoop | None = None
+_port: int | None = None
+_data_dir_override: Path | str | None = None
 _clients: set[Any] = set()
 _thread: threading.Thread | None = None
 _token: str | None = None
@@ -85,6 +88,17 @@ async def _handler(conn: Any) -> None:
             await conn.close(code=4401, reason="token inválido")
         return
     await conn.send(json.dumps({"type": "hello_ok"}))
+    if hello.get("role") == "publisher":
+        with contextlib.suppress(Exception):
+            raw = await asyncio.wait_for(conn.recv(), _HELLO_TIMEOUT_S)
+            msg = json.loads(raw)
+            if isinstance(msg, dict) and msg.get("type") == "broadcast" and "payload" in msg:
+                with _lock:
+                    count = len(_clients)
+                if count > 0:
+                    _send_all(json.dumps(msg["payload"], ensure_ascii=False))
+                await conn.send(json.dumps({"delivered": count}))
+        return
     with _lock:
         _clients.add(conn)
     try:
@@ -99,17 +113,18 @@ async def _serve(token: str, data_dir: Path | str | None = None) -> None:
     from websockets.asyncio.server import serve
 
     async with serve(_handler, _HOST, 0) as server:
-        global _loop
+        global _loop, _port
         port = server.sockets[0].getsockname()[1]
         with _lock:
             _loop = asyncio.get_running_loop()
+            _port = port
         _write_overlay_info(port, token, data_dir)
         _ready.set()
         await server.serve_forever()
 
 
 def _run(token: str, data_dir: Path | str | None = None) -> None:
-    global _loop
+    global _loop, _port
     coro = _serve(token, data_dir)
     try:
         asyncio.run(coro)
@@ -119,19 +134,34 @@ def _run(token: str, data_dir: Path | str | None = None) -> None:
     finally:
         with _lock:
             _loop = None
+            _port = None
         _ready.set()
+
+
+def _probe_existing_server(data_dir: Path | str | None = None) -> bool:
+    """Devuelve True si otro proceso ya tiene un WS activo en overlay.json."""
+    try:
+        info = json.loads((_data_dir(data_dir) / "overlay.json").read_text(encoding="utf-8"))
+        with socket.create_connection((info["host"], int(info["port"])), timeout=0.3):
+            return True
+    except Exception:
+        return False
 
 
 def start(data_dir: Path | str | None = None) -> None:
     """Levanta el servidor WS una sola vez (idempotente, hilo daemon)."""
-    global _thread, _token
+    global _thread, _token, _data_dir_override
     with _lock:
+        if data_dir is not None:
+            _data_dir_override = data_dir
         if _thread is not None and _thread.is_alive():
+            return
+        if _probe_existing_server(_data_dir_override):
             return
         _ready.clear()
         _token = secrets.token_urlsafe(32)
         _thread = threading.Thread(
-            target=_run, args=(_token, data_dir), daemon=True, name="hermis-ws"
+            target=_run, args=(_token, _data_dir_override), daemon=True, name="hermis-ws"
         )
         _thread.start()
     _ready.wait(timeout=_STARTUP_TIMEOUT_S)
@@ -142,6 +172,44 @@ def start(data_dir: Path | str | None = None) -> None:
                        _STARTUP_TIMEOUT_S)
 
 
+def _relay_to_overlay_server(obj: dict[str, Any]) -> int:
+    """Si otro proceso de Hermes es dueño de overlay.json, publica vía WS local."""
+    try:
+        info = json.loads((_data_dir(_data_dir_override) / "overlay.json").read_text(encoding="utf-8"))
+        with _lock:
+            if _loop is not None and info.get("port") == _port:
+                return 0
+    except Exception:
+        return 0
+
+    async def _publish() -> int:
+        from websockets.asyncio.client import connect
+
+        uri = f"ws://{info['host']}:{info['port']}"
+        async with connect(uri, open_timeout=1.0, close_timeout=0.5) as conn:
+            await conn.send(json.dumps({"type": "hello", "token": info["token"], "role": "publisher"}))
+            ack = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
+            if not isinstance(ack, dict) or ack.get("type") != "hello_ok":
+                return 0
+            await conn.send(json.dumps({"type": "broadcast", "payload": obj}, ensure_ascii=False))
+            res = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
+            return int(res.get("delivered", 0)) if isinstance(res, dict) else 0
+
+    out = [0]
+
+    def _runner() -> None:
+        coro = _publish()
+        try:
+            out[0] = asyncio.run(coro)
+        except Exception:
+            coro.close()
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join(timeout=2.5)
+    return out[0]
+
+
 def broadcast(obj: dict[str, Any]) -> int:
     """Manda un mensaje a todos los overlays conectados (thread-safe).
 
@@ -149,10 +217,10 @@ def broadcast(obj: dict[str, Any]) -> int:
     """
     with _lock:
         loop, count = _loop, len(_clients)
-    if loop is None or count == 0:
-        return 0
-    loop.call_soon_threadsafe(_send_all, json.dumps(obj, ensure_ascii=False))
-    return count
+    if loop is not None and count > 0:
+        loop.call_soon_threadsafe(_send_all, json.dumps(obj, ensure_ascii=False))
+        return count
+    return _relay_to_overlay_server(obj)
 
 
 def _send_all(text: str) -> None:

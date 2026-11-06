@@ -82,6 +82,29 @@ class SkeletonTest(unittest.TestCase):
                     "data": {"title": "Día 1", "body_markdown": "# Hola H.E.R.M.I.S"},
                 })
 
+                # Simula 2do proceso (gateway) publicando vía relay hacia overlay.json
+                relayed = ws_server._relay_to_overlay_server({
+                    "type": "render",
+                    "surface": "notification",
+                    "data": {"text": "desde gateway", "level": "info"},
+                })
+                # Cuando _port coincide con overlay.json local, forzamos _port distinto para probar el relay WS real
+                with ws_server._lock:
+                    real_port = ws_server._port
+                    ws_server._port = -1
+                try:
+                    relayed = ws_server._relay_to_overlay_server({
+                        "type": "render",
+                        "surface": "notification",
+                        "data": {"text": "desde gateway", "level": "info"},
+                    })
+                finally:
+                    with ws_server._lock:
+                        ws_server._port = real_port
+                self.assertEqual(relayed, 1)
+                msg2 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(msg2["data"]["text"], "desde gateway")
+
         asyncio.run(scenario())
 
 
@@ -110,8 +133,15 @@ async def _listen(demo: bool = False) -> None:
                     print(await conn.recv(), flush=True)
                     print(await conn.recv(), flush=True)
                     return
-                async for raw in conn:
-                    print(raw, flush=True)
+                while True:
+                    try:
+                        raw = await asyncio.wait_for(conn.recv(), timeout=2.0)
+                        print(raw, flush=True)
+                    except TimeoutError:
+                        cur = json.loads(overlay_file.read_text(encoding="utf-8"))
+                        if cur.get("port") != info.get("port") or cur.get("token") != info.get("token"):
+                            print("[hermis] overlay.json cambió de puerto; reconectando…", flush=True)
+                            break
                 print("[hermis] servidor WS cerró la conexión; esperando reconexión…", flush=True)
         except (OSError, ConnectionClosedError, json.JSONDecodeError, KeyError):
             if not warned:
