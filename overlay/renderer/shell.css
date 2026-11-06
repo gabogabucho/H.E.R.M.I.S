@@ -231,6 +231,15 @@ lumen-orb {
   100% { transform: scale(0.88); opacity: 1; }
 }
 
+/* autopilot: modo piloto automático encendido (Día 2 trae el morph) */
+lumen-orb.autopilot .orb-svg {
+  filter: drop-shadow(0 0 30px var(--lumen-accent));
+}
+
+lumen-orb.autopilot .orb-lines {
+  animation: orb-line-shift 1.1s ease-in-out infinite alternate;
+}
+
 /* =============================================
    WINDOW — superficie flotante
    ============================================= */
@@ -384,6 +393,14 @@ lumen-window {
 
 .document-body img {
   max-width: 100%;
+}
+
+.generic-body {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* =============================================

@@ -1,7 +1,8 @@
 // Mock del servidor WS del plugin H.E.R.M.I.S (Día 1).
 // Implementa el mismo contrato que ws_server.py: overlay.json con host/port/
 // token/pid, hello obligatorio (4401 si el token es inválido, 4400 si falla)
-// y muestra de mensajes render/state/mode. Sin Hermes instalado.
+// y muestra de mensajes render (con y sin id) / close / state / mode.
+// Sin Hermes instalado.
 'use strict';
 
 const os = require('os');
@@ -28,6 +29,15 @@ Este documento lo **dibuja el mock** sobre tu escritorio real.
 
     render_surface → superficie "document" — Día 1`;
 
+const SAMPLE_DOCUMENT_UPDATED = `# Documento actualizado en el lugar
+
+El mock re-renderizó **document-1**: misma id, misma ventana, nuevo contenido.
+
+1. La posición y el arrastre se mantienen
+2. Solo cambia el cuerpo del markdown
+
+> Si leés esto, la actualización in-place funcionó.`;
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
@@ -53,11 +63,27 @@ function sendSampleSequence(ws) {
   const steps = [
     [500, { type: 'state', orb: 'listening' }],
     [1200, { type: 'render', surface: 'notification', data: { text: 'Hermes conectado (mock)', level: 'info' } }],
-    [2500, { type: 'render', surface: 'document', data: { title: 'Bienvenida a H.E.R.M.I.S', body_markdown: SAMPLE_DOCUMENT } }],
+    [2500, { type: 'render', surface: 'document', id: 'document-1', data: { title: 'Bienvenida a H.E.R.M.I.S', body_markdown: SAMPLE_DOCUMENT } }],
     [4000, { type: 'state', orb: 'thinking' }],
     [5500, { type: 'state', orb: 'speaking' }],
     [7000, { type: 'state', orb: 'idle' }],
     [8500, { type: 'render', surface: 'notification', data: { text: 'Todo listo', level: 'success' } }],
+    [10000, {
+      type: 'render',
+      surface: 'email_list',
+      id: 'email_list-1',
+      data: {
+        title: 'Bandeja de entrada (Día 2)',
+        items: [
+          { from: 'ana@ejemplo.com', subject: 'Notas del sprint' },
+          { from: 'luis@ejemplo.com', subject: 'Re: demo del piloto automático' },
+        ],
+      },
+    }],
+    [12000, { type: 'render', surface: 'document', id: 'document-1', data: { title: 'Bienvenida (actualizada)', body_markdown: SAMPLE_DOCUMENT_UPDATED } }],
+    [14000, { type: 'close', id: 'document-1' }],
+    [16000, { type: 'mode', autopilot: true }],
+    [18000, { type: 'mode', autopilot: false }],
   ];
   for (const [delay, msg] of steps) {
     setTimeout(() => {

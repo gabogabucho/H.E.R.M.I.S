@@ -13,6 +13,8 @@ const WINDOW_WIDTH = 480;
 const WINDOW_HEIGHT = 320;
 const NOTIF_LIFETIME_MS = 4000;
 const NOTIF_LEVELS = ['info', 'success', 'error'];
+// Superficies del Día 2 sin componente propio: se muestran genéricas y seguras.
+const GENERIC_SURFACES = ['email_list', 'table', 'cards', 'web', 'image', 'custom'];
 
 function generateId(prefix = 'win') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
@@ -266,32 +268,51 @@ class LumenShell extends HTMLElement {
     if (!msg || typeof msg !== 'object') return;
     switch (msg.type) {
       case 'render':
-        this._handleRender(msg.surface, msg.data);
+        this._handleRender(msg.surface, msg.data, msg.id);
+        break;
+      case 'close':
+        this._handleClose(msg.id);
         break;
       case 'state':
         this.setShellState(msg.orb);
         break;
       case 'mode':
-        this.autopilot = !!msg.autopilot;
-        console.log('[shell] autopilot:', this.autopilot);
+        this.setAutopilot(!!msg.autopilot);
         break;
       default:
         console.log('[shell] mensaje desconocido, ignorado:', msg.type);
     }
   }
 
-  _handleRender(surface, data) {
+  _handleRender(surface, data, id) {
     if (!data || typeof data !== 'object') return;
-    switch (surface) {
-      case 'notification':
-        this.showNotification(data.text, data.level);
-        break;
-      case 'document':
-        this.openDocument(data);
-        break;
-      default:
-        console.log('[shell] surface desconocida, ignorada:', surface);
+    if (surface === 'notification') {
+      this.showNotification(data.text, data.level);
+      return;
     }
+    const surfaceId = typeof id === 'string' && id ? id : null;
+    if (surface === 'document') {
+      this.openDocument(surfaceId || generateId('doc'), data);
+      return;
+    }
+    if (GENERIC_SURFACES.includes(surface)) {
+      this.openGeneric(surfaceId || generateId('surface'), surface, data);
+      return;
+    }
+    console.log('[shell] surface desconocida, ignorada:', surface);
+  }
+
+  // close de una superficie por id, o de todas con id "all".
+  _handleClose(id) {
+    if (id === 'all') {
+      for (const record of this.windows.values()) record.el.remove();
+      this.windows.clear();
+      const container = this.querySelector('#notifications-container');
+      if (container) container.replaceChildren();
+      console.log('[shell] close all: superficies cerradas');
+      return;
+    }
+    this.closeWindow(id);
   }
 
   showNotification(text, level = 'info') {
@@ -312,26 +333,69 @@ class LumenShell extends HTMLElement {
     setTimeout(() => el.remove(), NOTIF_LIFETIME_MS);
   }
 
-  openDocument(data) {
-    const id = data.id || generateId('doc');
+  openDocument(id, data) {
     if (this.windows.has(id)) {
-      this.updateWindow(id, data);
+      this.updateWindow(id, 'document', data);
       return id;
     }
     const winEl = document.createElement('lumen-window');
     winEl.setAttribute('window-id', id);
     winEl.setAttribute('title', data.title || 'Documento');
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
-    const body = document.createElement('div');
-    body.className = 'document-body';
-    body.innerHTML = this._markdownToHtml(data.body_markdown || '');
-    winEl.appendChild(body);
+    const record = { el: winEl, kind: 'document' };
+    this._setWindowBody(record, 'document', data);
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
-    this.windows.set(id, { el: winEl, data });
+    this.windows.set(id, record);
     console.log('[shell] surface document dibujada:', id);
     return id;
+  }
+
+  // Superficies del Día 2 sin componente: título + datos como texto plano
+  // (textContent, nunca HTML) en una ventana normal.
+  openGeneric(id, surface, data) {
+    if (this.windows.has(id)) {
+      this.updateWindow(id, 'generic', { surface, data });
+      return id;
+    }
+    const winEl = document.createElement('lumen-window');
+    winEl.setAttribute('window-id', id);
+    winEl.setAttribute('title', data.title || surface);
+    winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
+    const record = { el: winEl, kind: 'generic' };
+    this._setWindowBody(record, 'generic', data);
+    const pos = this._computePosition();
+    winEl.setPosition(pos.x, pos.y);
+    this.querySelector('#windows-container').appendChild(winEl);
+    this.windows.set(id, record);
+    console.log('[shell] surface genérica dibujada:', surface, id);
+    return id;
+  }
+
+  _setWindowBody(record, kind, data) {
+    const old = record.el.querySelector('.document-body, .generic-body');
+    if (old) old.remove();
+    if (kind === 'document') {
+      const body = document.createElement('div');
+      body.className = 'document-body';
+      body.innerHTML = this._markdownToHtml(data.body_markdown || '');
+      record.el.appendChild(body);
+    } else {
+      const body = document.createElement('pre');
+      body.className = 'generic-body';
+      body.textContent = this._genericText(data);
+      record.el.appendChild(body);
+    }
+    record.kind = kind;
+  }
+
+  _genericText(data) {
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch (e) {
+      return String(data);
+    }
   }
 
   _markdownToHtml(md) {
@@ -345,12 +409,13 @@ class LumenShell extends HTMLElement {
     }
   }
 
-  updateWindow(id, data) {
+  updateWindow(id, kind, data) {
     const record = this.windows.get(id);
     if (!record) return;
-    if (data.title) record.el.setAttribute('title', data.title);
-    const body = record.el.querySelector('.document-body');
-    if (body) body.innerHTML = this._markdownToHtml(data.body_markdown || '');
+    if (typeof data.title === 'string' && data.title) {
+      record.el.setAttribute('title', data.title);
+    }
+    this._setWindowBody(record, kind, data);
   }
 
   closeWindow(id) {
@@ -363,6 +428,14 @@ class LumenShell extends HTMLElement {
   setShellState(state) {
     const orb = this.querySelector('lumen-orb');
     if (orb && typeof state === 'string') orb.state = state;
+  }
+
+  // mode: por ahora solo se muestra en el orbe (clase CSS); el morph es del Día 2.
+  setAutopilot(on) {
+    this.autopilot = on;
+    console.log('[shell] autopilot:', this.autopilot);
+    const orb = this.querySelector('lumen-orb');
+    if (orb) orb.classList.toggle('autopilot', on);
   }
 
   _computePosition() {
