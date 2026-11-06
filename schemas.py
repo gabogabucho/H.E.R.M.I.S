@@ -19,20 +19,80 @@ def _schema(name: str, description: str, properties: dict[str, Any],
     return {"name": name, "description": description, "parameters": params}
 
 
+AUTOPILOT_SCHEMA = _schema(
+    "autopilot",
+    "Activate or deactivate H.E.R.M.I.S Autopilot Mode ('on' | 'off'). When 'on', "
+    "the desktop overlay morphs into the floating orb and Hermes speaks short "
+    "voice replies while drawing rich data surfaces on screen via render_surface. "
+    "When 'off', clears open surfaces and returns to normal mode.",
+    {
+        "state": {
+            "type": "string",
+            "enum": ["on", "off"],
+            "description": "'on' to enter Autopilot Mode; 'off' to exit and clear surfaces.",
+        },
+    },
+    required=["state"],
+)
+
 RENDER_SURFACE_SCHEMA = _schema(
     "render_surface",
     "Draw a data surface floating over the user's Windows desktop (transparent "
     "always-on-top overlay; clicks pass through where nothing is drawn). Send "
     "data, not HTML — the overlay has the components (x-lumen-desktop v2). "
-    "Surfaces: 'notification' with data {text, level: 'success'|'info'|'error'} "
-    "and 'document' with data {title, body_markdown}. Returns JSON: ok, surface, "
-    "delivered (overlay clients the render was pushed to), overlay_connected.",
+    "Surfaces: "
+    "'notification' {text, level?: 'info'|'success'|'error'}; "
+    "'document' {title?, body_markdown?}; "
+    "'email_list' {title?, items: [{id?, from, subject, snippet?, date?, body_markdown?}]}; "
+    "'table' {title?, columns: [str], rows: [[cell]|object]}; "
+    "'cards' {title?, items: [{title, subtitle?, body?, badge?}]}; "
+    "'web' {title?, url: 'https://...'}; "
+    "'image' {title?, src|url, alt?}; "
+    "'custom' {title?, html} (sandboxed emergency fallback). "
+    "Returns JSON: ok, id (for persistent surfaces), surface, delivered, overlay_connected.",
     {
-        "surface": {"type": "string", "enum": ["notification", "document"],
-                    "description": "Which overlay component draws the data."},
-        "data": {"type": "object",
-                 "description": ("Payload for the surface: notification = {text, "
-                                 "level}; document = {title, body_markdown}.")},
+        "surface": {
+            "type": "string",
+            "enum": [
+                "notification",
+                "document",
+                "email_list",
+                "table",
+                "cards",
+                "web",
+                "image",
+                "custom",
+            ],
+            "description": "Which overlay component draws the data.",
+        },
+        "data": {
+            "type": "object",
+            "description": "Structured payload matching the chosen surface contract.",
+        },
+        "id": {
+            "type": "string",
+            "description": "Optional surface id to create or update in place.",
+        },
     },
     required=["surface", "data"],
+)
+
+CLOSE_SURFACE_SCHEMA = _schema(
+    "close_surface",
+    "Close an open floating surface on the desktop overlay by its id (e.g. "
+    "'document-1', 'email_list-1'), or pass 'all' to close all open surfaces.",
+    {
+        "id": {
+            "type": "string",
+            "description": "Surface id to close, or 'all' to close every open surface.",
+        },
+    },
+    required=["id"],
+)
+
+LIST_SURFACES_SCHEMA = _schema(
+    "list_surfaces",
+    "List all currently open floating surfaces on the desktop overlay and "
+    "whether Autopilot Mode is active.",
+    {},
 )
