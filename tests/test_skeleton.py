@@ -112,7 +112,8 @@ async def _listen(demo: bool = False) -> None:
                     return
                 async for raw in conn:
                     print(raw, flush=True)
-        except (OSError, json.JSONDecodeError, KeyError):
+                print("[hermis] servidor WS cerró la conexión; esperando reconexión…", flush=True)
+        except (OSError, ConnectionClosedError, json.JSONDecodeError, KeyError):
             if not warned:
                 print(
                     f"[hermis] esperando servidor WS activo en {overlay_file} "
