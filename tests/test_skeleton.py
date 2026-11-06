@@ -152,6 +152,12 @@ class SkeletonTest(unittest.TestCase):
                 ack = json.loads(await client.recv())
                 self.assertEqual(ack, {"type": "hello_ok"})
 
+                ap_on = json.loads(tools.autopilot({"state": "on"}))
+                self.assertTrue(ap_on["ok"])
+                self.assertEqual(ap_on["delivered"], 1)
+                mode_on = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(mode_on, {"type": "mode", "autopilot": True})
+
                 out = json.loads(tools.render_surface({
                     "surface": "document",
                     "data": {"title": "Día 1", "body_markdown": "# Hola H.E.R.M.I.S"},
@@ -197,6 +203,12 @@ class SkeletonTest(unittest.TestCase):
                 self.assertEqual(reloaded_ws.broadcast({"type": "render", "surface": "notification", "data": {"text": "post-reload"}}), 1)
                 msg3 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(msg3["data"]["text"], "post-reload")
+
+                ap_off = json.loads(tools.autopilot({"state": "off"}))
+                self.assertTrue(ap_off["ok"])
+                self.assertEqual(ap_off["delivered"], 1)
+                mode_off = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(mode_off, {"type": "mode", "autopilot": False})
 
         asyncio.run(scenario())
 

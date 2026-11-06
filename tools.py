@@ -102,7 +102,7 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     if not active:
         st["surfaces"] = {}
     ws_server.save_state(st)
-    delivered, note = _safe_broadcast({"type": "autopilot", "state": state})
+    delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     out: dict[str, Any] = {
         "ok": True,
         "state": state,
