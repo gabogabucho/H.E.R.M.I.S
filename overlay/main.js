@@ -80,6 +80,7 @@ function connect() {
   if (sock) return;
   const info = readOverlayInfo();
   if (!info) {
+    watchOverlayFile();
     scheduleReconnect();
     return;
   }
@@ -150,15 +151,31 @@ function watchOverlayFile() {
       timer = setTimeout(() => {
         const info = readOverlayInfo();
         if (!info) return;
-        if (endpointKey(info) !== lastEndpoint && sock) {
-          console.log('[overlay] overlay.json cambió (puerto/token): reconectando');
-          sock.terminate();
+        if (sock) {
+          if (endpointKey(info) !== lastEndpoint) {
+            console.log('[overlay] overlay.json cambió (puerto/token): reconectando');
+            sock.terminate();
+          }
+        } else if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+          backoffMs = CONNECT_BACKOFF_MS;
+          console.log('[overlay] overlay.json disponible: conectando ya');
+          connect();
         }
       }, FILE_WATCH_DEBOUNCE_MS);
     });
-    fileWatcher.on('error', () => {});
+    fileWatcher.on('error', () => {
+      try {
+        fileWatcher.close();
+      } catch (e) {
+        // ya cerrado
+      }
+      fileWatcher = null;
+    });
   } catch (e) {
     console.warn('[overlay] no se pudo vigilar overlay.json:', e.message);
+    fileWatcher = null;
   }
 }
 
