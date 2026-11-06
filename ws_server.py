@@ -6,9 +6,10 @@ una sola sesión. El overlay lee ``overlay.json`` (puerto + token, dentro del
 como primer mensaje: sin hello válido se cierra la conexión (4401). Todo
 queda en loopback — nada escucha en interfaces externas.
 
-Estado Día 1: solo ``broadcast`` (plugin → overlay). Los mensajes posteriores
-del overlay se ignoran; Día 2+ agrega ``close_surface``/``list_surfaces`` y
-estado persistente.
+Estado Día 2: ``broadcast`` (plugin → overlay) y sincronización al conectar:
+cuando un overlay completa el ``hello``, recibe ``mode`` (estado de
+``state.json``) y un ``render`` por cada superficie activa, en orden. Los
+mensajes posteriores del overlay se ignoran.
 """
 from __future__ import annotations
 
@@ -133,6 +134,19 @@ async def _handler(conn: Any) -> None:
                     _send_all(json.dumps(msg["payload"], ensure_ascii=False))
                 await conn.send(json.dumps({"delivered": count}))
         return
+    # Sincronización al conectar: el overlay recupera el estado actual (mode +
+    # un render por superficie persistida, en orden) antes de pasar al stream.
+    st = load_state()
+    await _safe_send(conn, json.dumps({"type": "mode", "autopilot": bool(st.get("autopilot", False))}))
+    for entry in (st.get("surfaces") or {}).values():
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+            continue
+        await _safe_send(conn, json.dumps({
+            "type": "render",
+            "surface": entry.get("surface"),
+            "id": entry.get("id"),
+            "data": entry.get("data"),
+        }, ensure_ascii=False))
     with _lock:
         _clients.add(conn)
     try:

@@ -33,6 +33,12 @@ class SkeletonTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         with ws_server._lock:
             ws_server._STATE["data_dir_override"] = self.tmp
+            ws_server._STATE["thread"] = None
+            ws_server._STATE["loop"] = None
+            ws_server._STATE["port"] = None
+            ws_server._STATE["token"] = None
+            ws_server._clients.clear()
+        ws_server._ready.clear()
 
     def test_schema_and_validation(self) -> None:
         self.assertEqual(schemas.AUTOPILOT_SCHEMA["name"], "autopilot")
@@ -130,6 +136,59 @@ class SkeletonTest(unittest.TestCase):
         self.assertFalse(ap_off["autopilot"])
         self.assertIsNone(tools.pre_llm_call())
 
+    def test_sync_on_connect(self) -> None:
+        # Estado previo sin overlay conectado: autopilot on + superficies persistidas
+        ap_on = json.loads(tools.autopilot({"state": "on"}))
+        self.assertTrue(ap_on["ok"])
+        emails = json.loads(tools.render_surface({
+            "surface": "email_list",
+            "id": "inbox",
+            "data": {"title": "Últimos correos", "items": [{"from": "Juan <j@x.com>", "subject": "Hola"}]},
+        }))
+        self.assertTrue(emails["ok"])
+        table = json.loads(tools.render_surface({
+            "surface": "table",
+            "data": {"columns": ["Alumno"], "rows": [["Juan"]]},
+        }))
+        self.assertTrue(table["ok"])
+
+        ctx = MagicMock(plugin_data_dir=self.tmp)
+        hermis.register(ctx)
+        info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        uri = f"ws://{info['host']}:{info['port']}"
+
+        async def scenario() -> None:
+            async with connect(uri) as client:
+                await client.send(json.dumps({"type": "hello", "token": info["token"]}))
+                self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
+                mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(mode, {"type": "mode", "autopilot": True})
+                rend1 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(rend1, {
+                    "type": "render",
+                    "surface": "email_list",
+                    "id": "inbox",
+                    "data": {"title": "Últimos correos", "items": [{"from": "Juan <j@x.com>", "subject": "Hola"}]},
+                })
+                rend2 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(rend2["type"], "render")
+                self.assertEqual(rend2["id"], table["id"])
+                self.assertEqual(rend2["surface"], "table")
+
+                # Un publisher recibe hello_ok y recién su ack: sin sincronización
+                async with connect(uri) as pub:
+                    await pub.send(json.dumps({"type": "hello", "token": info["token"], "role": "publisher"}))
+                    self.assertEqual(json.loads(await pub.recv()), {"type": "hello_ok"})
+                    await pub.send(json.dumps({
+                        "type": "broadcast",
+                        "payload": {"type": "render", "surface": "notification",
+                                    "data": {"text": "sin sync", "level": "info"}},
+                    }))
+                    ack = json.loads(await asyncio.wait_for(pub.recv(), timeout=2.0))
+                    self.assertEqual(ack, {"delivered": 1})
+
+        asyncio.run(scenario())
+
     def test_ws_handshake_and_broadcast(self) -> None:
         ctx = MagicMock(plugin_data_dir=self.tmp)
         hermis.register(ctx)
@@ -151,6 +210,9 @@ class SkeletonTest(unittest.TestCase):
                 await client.send(json.dumps({"type": "hello", "token": info["token"]}))
                 ack = json.loads(await client.recv())
                 self.assertEqual(ack, {"type": "hello_ok"})
+                # Sincronización al conectar: modo actual de state.json
+                sync_mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(sync_mode, {"type": "mode", "autopilot": False})
 
                 ap_on = json.loads(tools.autopilot({"state": "on"}))
                 self.assertTrue(ap_on["ok"])
