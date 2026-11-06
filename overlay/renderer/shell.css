@@ -1,0 +1,465 @@
+/* shell.css — H.E.R.M.I.S overlay
+   Portado de Lumen OS (gabogabucho/Lumen-os, os/shell/shell.css): vidrio,
+   orbe poligonal y ventanas flotantes. body transparente para el overlay. */
+
+:root {
+  --lumen-primary: #0071E3;
+  --lumen-secondary: #5AC8FA;
+  --lumen-accent: #FF375F;
+  --lumen-text: #1D1D1F;
+  --lumen-text-muted: #86868B;
+  --lumen-glow: rgba(0, 113, 227, 0.25);
+  --lumen-glow-soft: rgba(0, 113, 227, 0.15);
+  --lumen-glow-strong: rgba(0, 113, 227, 0.4);
+  --lumen-panel-bg: rgba(255, 255, 255, 0.82);
+  --lumen-panel-border: rgba(0, 0, 0, 0.06);
+  --lumen-radius: 18px;
+  --lumen-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --lumen-header-height: 36px;
+  --orb-size: 96px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+
+lumen-shell {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+lumen-orb,
+lumen-window,
+.lumen-notification {
+  pointer-events: auto;
+}
+
+/* =============================================
+   ORB — chico, abajo a la derecha
+   ============================================= */
+
+lumen-orb {
+  position: fixed;
+  right: 32px;
+  bottom: 72px;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  z-index: 100;
+  cursor: pointer;
+  display: block;
+}
+
+.orb-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.orb-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 20px var(--lumen-glow));
+  transition: filter 0.5s ease;
+}
+
+.orb-svg .orb-aura {
+  fill: url(#orbAuraGrad);
+  opacity: 0.95;
+}
+
+.orb-svg .orb-core {
+  fill: url(#orbCoreGrad);
+  filter: url(#orbGlow);
+}
+
+.orb-svg .orb-shell {
+  fill: none;
+  stroke: rgba(255,255,255,0.38);
+  stroke-width: 1.2;
+  opacity: 0.95;
+}
+
+.orb-svg .orb-facet {
+  fill: rgba(255,255,255,0.10);
+  stroke: rgba(255,255,255,0.08);
+  stroke-width: 0.8;
+  transition: fill 0.35s ease, opacity 0.35s ease;
+}
+
+.orb-svg .orb-lines {
+  fill: none;
+  stroke: rgba(220,245,255,0.35);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
+}
+
+.orb-svg .orb-nucleus {
+  fill: rgba(235, 250, 255, 0.95);
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.75));
+}
+
+.orb-svg .orb-highlight,
+.orb-svg .orb-spark {
+  fill: rgba(255,255,255,0.9);
+}
+
+/* idle: pulso suave */
+.orb-state-idle .orb-svg {
+  animation: orb-pulse 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px var(--lumen-glow-soft));
+}
+
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+.orb-state-idle .orb-nucleus {
+  animation: nucleus-breathe 4s ease-in-out infinite;
+}
+
+@keyframes nucleus-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+/* listening: pulso rápido con aura viva */
+.orb-state-listening .orb-svg {
+  filter: drop-shadow(0 0 30px var(--lumen-glow-strong));
+  animation: orb-listen 1.6s ease-in-out infinite;
+}
+
+@keyframes orb-listen {
+  0%, 100% { transform: scale(1.02); }
+  50% { transform: scale(1.08); }
+}
+
+.orb-state-listening .orb-aura {
+  animation: aura-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes aura-breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* thinking: rotación lenta + brillo */
+.orb-state-thinking .orb-svg {
+  animation: orb-rotate 8s linear infinite;
+  filter: drop-shadow(0 0 30px var(--lumen-glow));
+}
+
+@keyframes orb-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.orb-state-thinking .orb-lines {
+  animation: orb-line-shift 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes orb-line-shift {
+  0% { opacity: 0.45; }
+  100% { opacity: 0.9; }
+}
+
+/* speaking: ondas de audio */
+.orb-state-speaking .orb-svg {
+  filter: drop-shadow(0 0 35px var(--lumen-glow-strong));
+  animation: orb-speak 0.6s ease-in-out infinite;
+}
+
+@keyframes orb-speak {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.orb-state-speaking .orb-nucleus {
+  animation: orb-nucleus-speak 0.32s ease-in-out infinite alternate;
+}
+
+@keyframes orb-nucleus-speak {
+  0% { transform: scale(1); opacity: 0.92; }
+  100% { transform: scale(1.28); opacity: 1; }
+}
+
+/* acting: movimiento activo */
+.orb-state-acting .orb-svg {
+  filter: drop-shadow(0 0 40px var(--lumen-accent));
+  animation: orb-act 1.5s ease-in-out infinite;
+}
+
+.orb-state-acting .orb-core {
+  filter: saturate(1.25) brightness(1.05);
+}
+
+.orb-state-acting .orb-facet {
+  fill: rgba(255,255,255,0.16);
+  opacity: 1;
+}
+
+@keyframes orb-act {
+  0%, 100% { transform: scale(1) translateY(0); }
+  25% { transform: scale(1.05) translateY(-4px); }
+  50% { transform: scale(1.02) translateY(2px); }
+  75% { transform: scale(1.06) translateY(-2px); }
+}
+
+.orb-state-acting .orb-nucleus {
+  animation: orb-nucleus-act 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes orb-nucleus-act {
+  0% { transform: scale(1.05); opacity: 0.9; }
+  100% { transform: scale(0.88); opacity: 1; }
+}
+
+/* =============================================
+   WINDOW — superficie flotante
+   ============================================= */
+
+lumen-window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: 480px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 200px);
+  background: var(--lumen-panel-bg);
+  border: 1px solid var(--lumen-panel-border);
+  border-radius: var(--lumen-radius);
+  box-shadow: var(--lumen-shadow);
+  backdrop-filter: blur(20px) saturate(180%);
+  overflow: hidden;
+  z-index: 50;
+  animation: window-appear 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes window-appear {
+  0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--lumen-header-height);
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid var(--lumen-panel-border);
+  cursor: grab;
+  user-select: none;
+}
+
+.window-header:active {
+  cursor: grabbing;
+}
+
+.window-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--lumen-text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.window-close {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--lumen-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+.window-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--lumen-accent);
+}
+
+.window-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  color: var(--lumen-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.window-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.window-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.window-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.document-body h1, .document-body h2, .document-body h3 {
+  margin: 0 0 0.5em;
+  line-height: 1.25;
+}
+
+.document-body p {
+  margin: 0 0 0.75em;
+}
+
+.document-body ul, .document-body ol {
+  margin: 0 0 0.75em 1.25em;
+}
+
+.document-body code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 0.85em;
+}
+
+.document-body pre {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0 0 0.75em;
+}
+
+.document-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.document-body blockquote {
+  margin: 0 0 0.75em;
+  padding: 4px 12px;
+  border-left: 3px solid var(--lumen-primary);
+  color: var(--lumen-text-muted);
+}
+
+.document-body table {
+  border-collapse: collapse;
+  margin: 0 0 0.75em;
+}
+
+.document-body th, .document-body td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 4px 8px;
+  font-size: 0.85em;
+}
+
+.document-body a {
+  color: var(--lumen-primary);
+}
+
+.document-body img {
+  max-width: 100%;
+}
+
+/* =============================================
+   NOTIFICACIONES — apiladas arriba a la derecha
+   ============================================= */
+
+#notifications-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 200;
+}
+
+.lumen-notification {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 20px;
+  background: var(--lumen-panel-bg);
+  border: 1px solid var(--lumen-panel-border);
+  border-radius: var(--lumen-radius);
+  color: var(--lumen-text);
+  font-size: 0.9rem;
+  box-shadow: var(--lumen-shadow);
+  backdrop-filter: blur(8px);
+  max-width: 380px;
+  animation: notif-in 0.3s ease, notif-out 0.3s ease 3.7s forwards;
+}
+
+.lumen-notification .notification-text {
+  flex: 1;
+}
+
+.lumen-notification .notification-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--lumen-text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.lumen-notification .notification-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--lumen-accent);
+}
+
+.lumen-notification.level-success {
+  border-color: rgba(52, 199, 89, 0.3);
+  color: #248a3d;
+}
+
+.lumen-notification.level-error {
+  border-color: rgba(255, 55, 95, 0.35);
+  color: #b81237;
+}
+
+@keyframes notif-in {
+  0% { opacity: 0; transform: translateX(40px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes notif-out {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(40px); }
+}
+
+.hidden {
+  display: none !important;
+}

@@ -1,0 +1,18 @@
+{
+  "name": "hermis-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Overlay Electron de H.E.R.M.I.S: dibuja superficies y el orbe sobre el escritorio de Windows 11",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "marked": "18.1.1",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "electron": "45.0.0"
+  }
+}
