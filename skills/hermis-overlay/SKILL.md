@@ -1,6 +1,6 @@
 ---
 name: hermis-overlay
-description: Ajusta la transparencia (opacidad) y el tema visual (claro u oscuro) de las superficies flotantes del overlay H.E.R.M.I.S, o acomoda/abre ventanas reales de Windows (split, grid, maximize, focus, minimize_others, launch_app) a pedido del usuario.
+description: Ajusta la transparencia (opacidad) y el tema visual (claro u oscuro) de las superficies flotantes del overlay H.E.R.M.I.S, o acomoda, abre y escribe texto en ventanas reales de Windows (split, grid, maximize, focus, minimize_others, launch_app, type_in_window) a pedido del usuario.
 ---
 
 # H.E.R.M.I.S — Control de Transparencia, Tema y Ventanas Reales
@@ -20,21 +20,14 @@ Cuando el usuario pida ajustar qué tan traslúcido u opaco se ve el fondo de la
 }
 ```
 
-- **Muy traslúcido / cristal ligero:** `55` a `68`
-- **Equilibrado (por defecto):** `82` a `85`
-- **Casi sólido / máxima lectura:** `92` a `96`
-- **Tema oscuro / claro:** `"theme": "dark"` o `"theme": "light"`
+## 2. Acomodar Ventanas Reales (`layout_windows`), Abrir Apps (`launch_app`) y Escribir Texto (`type_in_window`)
 
-## 2. Acomodar Ventanas Reales (`layout_windows`) y Abrir Apps (`launch_app`)
-
-- Si las tools `layout_windows` y `launch_app` están registradas en la sesión, úsalas directamente:
-  - `layout_windows(layout="split"|"grid"|"maximize"|"focus"|"minimize_others", windows=["Excel", "Chrome"])`
+- Para acomodar o enfocar ventanas reales:
+  - `layout_windows(layout="split"|"grid"|"maximize"|"focus"|"minimize_others", windows=["PowerShell", "Bloc de notas"])`
+- Para abrir una aplicación:
   - `launch_app(app="notepad"|"calc"|"explorer"|"chrome"|"code"|..., args=[...])`
-- Si la sesión actual del Gateway se inició antes de registrar `layout_windows` / `launch_app`, puedes invocar el módulo directamente con Python:
+- **Para escribir texto dentro de una ventana abierta (como el Bloc de notas / Notepad):**
+  Ejecuta con la herramienta de terminal este comando Python que enfoca la ventana, hace clic en el área de edición y envía las teclas Unicode con `SendInput`:
   ```powershell
-  python -c "import win32_windows, json; print(json.dumps(win32_windows.apply_layout('split', ['PowerShell', 'Chrome']), ensure_ascii=False))"
-  ```
-  o para abrir una app:
-  ```powershell
-  python -c "import win32_windows, json; print(json.dumps(win32_windows.launch_application('notepad'), ensure_ascii=False))"
+  python -c "import sys, json; sys.path.insert(0, 'c:/Users/EnderJavier/Documents/Proyectos WEB/H.E.R.M.I.S'); import win32_windows; print(json.dumps(win32_windows.type_in_window('bloc de notas', 'hello world'), ensure_ascii=False))"
   ```

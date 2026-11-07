@@ -263,7 +263,10 @@ def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
             "message": "windows debe ser una lista no vacía de nombres o títulos de ventana",
         })
     queries = [str(w).strip() for w in windows]
-    res = win32_windows.apply_layout(layout, queries)
+    type_text = args.get("type_text")
+    if type_text is not None and not isinstance(type_text, str):
+        return _json({"ok": False, "error": "invalid_type_text", "message": "type_text debe ser un string"})
+    res = win32_windows.apply_layout(layout, queries, type_text=type_text)
     st = ws_server.load_state()
     _refresh_windows_cache(st)
     ws_server.save_state(st)

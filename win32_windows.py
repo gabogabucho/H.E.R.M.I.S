@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -220,8 +221,23 @@ def _minimize_window(hwnd: int) -> bool:
         return False
 
 
+_WINDOW_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "notepad": ("notepad", "bloc de notas", "sin título", "untitled"),
+    "bloc de notas": ("bloc de notas", "notepad", "sin título", "untitled"),
+    "notas": ("bloc de notas", "notepad", "notas", "sin título"),
+    "calc": ("calculadora", "calculator", "calc"),
+    "calculator": ("calculator", "calculadora"),
+    "calculadora": ("calculadora", "calculator"),
+    "explorer": ("explorador", "file explorer", "explorer"),
+    "explorador": ("explorador", "file explorer", "explorer"),
+    "powershell": ("powershell", "windows powershell", "terminal"),
+    "code": ("visual studio code", "vscode", "code"),
+    "vscode": ("visual studio code", "vscode"),
+}
+
+
 def match_windows(queries: list[str], available: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], list[str]]:
-    """Resuelve cada query por coincidencia parcial (case-insensitive) en el título."""
+    """Resuelve cada query por coincidencia parcial (case-insensitive) o sinónimo bilingüe en el título."""
     pool = list(available) if available is not None else list_open_windows()
     matched: list[dict[str, Any]] = []
     used_hwnds: set[int] = set()
@@ -231,8 +247,13 @@ def match_windows(queries: list[str], available: list[dict[str, Any]] | None = N
         needle = q.strip().lower()
         if not needle:
             continue
+        candidates = _WINDOW_SYNONYMS.get(needle, (needle,))
         found = next(
-            (w for w in pool if w["hwnd"] not in used_hwnds and needle in w["title"].lower()),
+            (
+                w for w in pool
+                if w["hwnd"] not in used_hwnds
+                and any(cand in w["title"].lower() for cand in candidates)
+            ),
             None,
         )
         if found is not None:
@@ -243,7 +264,7 @@ def match_windows(queries: list[str], available: list[dict[str, Any]] | None = N
     return matched, unmatched
 
 
-def apply_layout(layout: str, queries: list[str]) -> dict[str, Any]:
+def apply_layout(layout: str, queries: list[str], type_text: str | None = None) -> dict[str, Any]:
     """Aplica ``layout`` ('split'|'grid'|'maximize'|'focus'|'minimize_others') a las ventanas indicadas."""
     if not is_windows():
         return {
@@ -306,11 +327,133 @@ def apply_layout(layout: str, queries: list[str]) -> dict[str, Any]:
             _focus_window(win["hwnd"])
             placed.append({"title": win["title"], "state": "focused", "minimized_others": minimized_count})
 
-    return {
+    out: dict[str, Any] = {
         "ok": True,
         "layout": layout,
         "matched": placed,
         "unmatched": unmatched,
+    }
+    if isinstance(type_text, str) and type_text:
+        typed = _send_text_to_window(matched[0], type_text)
+        out["typed"] = typed
+    return out
+
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _INPUT_UNION(ctypes.Union):
+    _fields_ = [
+        ("ki", _KEYBDINPUT),
+        ("mi", _MOUSEINPUT),
+    ]
+
+
+class _INPUT(ctypes.Structure):
+    _fields_ = [
+        ("type", wintypes.DWORD),
+        ("u", _INPUT_UNION),
+    ]
+
+
+_INPUT_KEYBOARD = 1
+_KEYEVENTF_KEYUP = 0x0002
+_KEYEVENTF_UNICODE = 0x0004
+_VK_RETURN = 0x0D
+_MOUSEEVENTF_LEFTDOWN = 0x0002
+_MOUSEEVENTF_LEFTUP = 0x0004
+
+
+def _send_text_to_window(win: dict[str, Any], text: str, press_enter: bool = False) -> bool:
+    """Enfoca la ventana, hace clic en su área central de edición y envía texto Unicode con SendInput."""
+    if not is_windows():
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = int(win["hwnd"])
+        _focus_window(hwnd)
+        rect = wintypes.RECT()
+        if user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+            cx = int((rect.left + rect.right) // 2)
+            cy = int((rect.top + rect.bottom) // 2)
+        else:
+            cx = int(win.get("x", 200) + win.get("width", 400) // 2)
+            cy = int(win.get("y", 200) + win.get("height", 300) // 2)
+        user32.SetCursorPos(cx, cy)
+        user32.mouse_event(_MOUSEEVENTF_LEFTDOWN | _MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        time.sleep(0.15)
+
+        inputs: list[_INPUT] = []
+        for ch in text:
+            if ch == "\r":
+                continue
+            if ch == "\n":
+                down = _INPUT(type=_INPUT_KEYBOARD)
+                down.u.ki = _KEYBDINPUT(wVk=_VK_RETURN, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
+                up = _INPUT(type=_INPUT_KEYBOARD)
+                up.u.ki = _KEYBDINPUT(wVk=_VK_RETURN, wScan=0, dwFlags=_KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
+                inputs.extend((down, up))
+            else:
+                code = ord(ch)
+                down = _INPUT(type=_INPUT_KEYBOARD)
+                down.u.ki = _KEYBDINPUT(wVk=0, wScan=code, dwFlags=_KEYEVENTF_UNICODE, time=0, dwExtraInfo=0)
+                up = _INPUT(type=_INPUT_KEYBOARD)
+                up.u.ki = _KEYBDINPUT(wVk=0, wScan=code, dwFlags=_KEYEVENTF_UNICODE | _KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
+                inputs.extend((down, up))
+
+        if press_enter:
+            down = _INPUT(type=_INPUT_KEYBOARD)
+            down.u.ki = _KEYBDINPUT(wVk=_VK_RETURN, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
+            up = _INPUT(type=_INPUT_KEYBOARD)
+            up.u.ki = _KEYBDINPUT(wVk=_VK_RETURN, wScan=0, dwFlags=_KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
+            inputs.extend((down, up))
+
+        if inputs:
+            arr = (_INPUT * len(inputs))(*inputs)
+            sent = user32.SendInput(len(inputs), ctypes.byref(arr), ctypes.sizeof(_INPUT))
+            return int(sent) == len(inputs)
+        return True
+    except Exception:
+        return False
+
+
+def type_in_window(query: str, text: str, press_enter: bool = False) -> dict[str, Any]:
+    """Busca una ventana por título/sinónimo, la enfoca y escribe ``text``."""
+    if not is_windows():
+        return {"ok": False, "error": "unsupported_platform", "message": "type_in_window requiere Windows"}
+    all_windows = list_open_windows()
+    matched, _ = match_windows([query], all_windows)
+    if not matched:
+        return {
+            "ok": False,
+            "error": "no_matching_windows",
+            "message": f"No se encontró ventana para {query!r}",
+            "available_windows": [w["title"] for w in all_windows[:15]],
+        }
+    target = matched[0]
+    ok = _send_text_to_window(target, text, press_enter=press_enter)
+    return {
+        "ok": ok,
+        "window": target["title"],
+        "typed_chars": len(text),
     }
 
 
