@@ -216,8 +216,9 @@ function createWindow() {
   win.webContents.on('console-message', (event) => {
     console.log('[renderer]', event.message);
   });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  const ready = win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.showInactive();
+  return ready;
 }
 
 ipcMain.on('hermis:interactive', (_e, interactive) => {
@@ -229,8 +230,8 @@ ipcMain.on('hermis:interactive', (_e, interactive) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.whenReady().then(() => {
-    createWindow();
+  app.whenReady().then(async () => {
+    await createWindow();
     watchOverlayFile();
     connect();
   });

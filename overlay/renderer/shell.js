@@ -343,10 +343,10 @@ class LumenShell extends HTMLElement {
     winEl.setAttribute('title', data.title || 'Documento');
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
     const record = { el: winEl, kind: 'document' };
-    this._setWindowBody(record, 'document', data);
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
+    this._setWindowBody(record, 'document', data);
     this.windows.set(id, record);
     console.log('[shell] surface document dibujada:', id);
     return id;
@@ -364,28 +364,29 @@ class LumenShell extends HTMLElement {
     winEl.setAttribute('title', data.title || surface);
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
     const record = { el: winEl, kind: 'generic' };
-    this._setWindowBody(record, 'generic', data);
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
+    this._setWindowBody(record, 'generic', data);
     this.windows.set(id, record);
     console.log('[shell] surface genérica dibujada:', surface, id);
     return id;
   }
 
   _setWindowBody(record, kind, data) {
-    const old = record.el.querySelector('.document-body, .generic-body');
+    const container = record.el.querySelector('.window-content') || record.el;
+    const old = container.querySelector('.document-body, .generic-body');
     if (old) old.remove();
     if (kind === 'document') {
       const body = document.createElement('div');
       body.className = 'document-body';
       body.innerHTML = this._markdownToHtml(data.body_markdown || '');
-      record.el.appendChild(body);
+      container.appendChild(body);
     } else {
       const body = document.createElement('pre');
       body.className = 'generic-body';
       body.textContent = this._genericText(data);
-      record.el.appendChild(body);
+      container.appendChild(body);
     }
     record.kind = kind;
   }
