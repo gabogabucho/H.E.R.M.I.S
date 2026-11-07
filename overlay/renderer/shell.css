@@ -500,6 +500,206 @@ lumen-window {
 }
 
 /* =============================================
+   SUPERFICIES del Día 2
+   ============================================= */
+
+.surface-body {
+  min-width: 0;
+}
+
+/* email_list (boceto pantalla 3): numerada, remitente + asunto + fecha */
+.email-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.email-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.email-row.expandable {
+  cursor: pointer;
+}
+
+.email-row.expandable:hover {
+  background: rgba(0, 113, 227, 0.06);
+}
+
+.email-num {
+  width: 20px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--lumen-text-muted);
+  text-align: right;
+}
+
+.email-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.email-from {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--lumen-text);
+}
+
+.email-subject,
+.email-snippet {
+  font-size: 0.82rem;
+  color: #555A63;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.email-snippet {
+  font-size: 0.78rem;
+  color: var(--lumen-text-muted);
+}
+
+.email-date {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--lumen-text-muted);
+}
+
+.email-detail {
+  padding: 6px 4px 12px 30px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.email-markdown {
+  font-size: 0.85rem;
+}
+
+/* table */
+.surface-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.surface-table th,
+.surface-table td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.surface-table th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
+.surface-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.surface-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.card-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #E8F1FD;
+  color: #0058B0;
+}
+
+.card-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding-right: 44px;
+}
+
+.card-subtitle {
+  font-size: 0.78rem;
+  color: var(--lumen-text-muted);
+  margin-top: 2px;
+}
+
+.card-body {
+  font-size: 0.8rem;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* image */
+.surface-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+/* web: tarjeta + botón (la página no se embebe) */
+.web-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.web-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.web-domain {
+  font-size: 0.8rem;
+  color: var(--lumen-primary);
+}
+
+.web-url {
+  font-size: 0.75rem;
+  color: var(--lumen-text-muted);
+  word-break: break-all;
+}
+
+.web-open {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--lumen-primary);
+  color: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.web-open:hover {
+  filter: brightness(1.08);
+}
+
+/* custom: iframe sandbox sin allow-scripts */
+.surface-frame {
+  width: 100%;
+  height: 340px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* =============================================
    NOTIFICACIONES — apiladas arriba a la derecha
    ============================================= */
 

@@ -4,4 +4,5 @@ contextBridge.exposeInMainWorld('hermis', {
   onMessage: (cb) => ipcRenderer.on('hermis:message', (_e, msg) => cb(msg)),
   onStatus: (cb) => ipcRenderer.on('hermis:status', (_e, status) => cb(status)),
   setInteractive: (interactive) => ipcRenderer.send('hermis:interactive', !!interactive),
+  openExternal: (url) => ipcRenderer.invoke('hermis:open-external', url),
 });
