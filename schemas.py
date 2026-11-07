@@ -100,3 +100,44 @@ LIST_SURFACES_SCHEMA = _schema(
     "whether Autopilot Mode is active.",
     {},
 )
+
+LAYOUT_WINDOWS_SCHEMA = _schema(
+    "layout_windows",
+    "Arrange, focus, or maximize real Windows desktop application windows by "
+    "matching their title or app name (e.g. 'pon Excel a la izquierda y Chrome a la derecha', "
+    "'put Notepad on the left and PowerShell on the right', 'maximiza Chrome', 'enfoca VS Code'). "
+    "Layouts: 'split' (side-by-side columns), 'grid' (2x2 or NxM grid), 'maximize', "
+    "'focus' (bring to front), 'minimize_others' (minimize everything except matched windows).",
+    {
+        "layout": {
+            "type": "string",
+            "enum": ["split", "grid", "maximize", "focus", "minimize_others"],
+            "description": "Window arrangement mode to apply on the primary monitor work area.",
+        },
+        "windows": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Window title or app name substrings in the desired order (e.g. ['Excel', 'Chrome']).",
+        },
+    },
+    required=["layout", "windows"],
+)
+
+LAUNCH_APP_SCHEMA = _schema(
+    "launch_app",
+    "Launch a desktop application on Windows by name or alias without using a shell "
+    "(e.g. 'notepad' / 'bloc de notas', 'calc' / 'calculadora', 'explorer' / 'explorador', "
+    "'chrome', 'edge', 'code' / 'vscode', 'excel', 'word', 'powershell', 'spotify').",
+    {
+        "app": {
+            "type": "string",
+            "description": "Application name or alias to launch.",
+        },
+        "args": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional command-line arguments (e.g. file path or URL).",
+        },
+    },
+    required=["app"],
+)

@@ -88,11 +88,14 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
         try:
             raw = json.loads(target.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                return {
+                out: dict[str, Any] = {
                     "autopilot": bool(raw.get("autopilot", False)),
                     "seq": int(raw.get("seq", 0)),
                     "surfaces": dict(raw.get("surfaces") or {}) if isinstance(raw.get("surfaces"), dict) else {},
                 }
+                if isinstance(raw.get("windows"), list):
+                    out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
+                return out
         except Exception:
             pass
         return {"autopilot": False, "seq": 0, "surfaces": {}}

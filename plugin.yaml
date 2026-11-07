@@ -10,5 +10,7 @@ provides_tools:
   - render_surface
   - close_surface
   - list_surfaces
+  - layout_windows
+  - launch_app
 provides_hooks:
   - pre_llm_call

@@ -1,15 +1,13 @@
 ---
 name: hermis-overlay
-description: Ajusta la transparencia (opacidad) y el tema visual (claro u oscuro) de las superficies flotantes del overlay H.E.R.M.I.S a pedido del usuario (por ejemplo "haz el fondo más traslúcido", "baja la opacidad al 60%", "pon las ventanas en modo oscuro", "make the overlay more transparent").
+description: Ajusta la transparencia (opacidad) y el tema visual (claro u oscuro) de las superficies flotantes del overlay H.E.R.M.I.S, o acomoda/abre ventanas reales de Windows (split, grid, maximize, focus, minimize_others, launch_app) a pedido del usuario.
 ---
 
-# H.E.R.M.I.S — Control de Transparencia y Tema del Overlay
+# H.E.R.M.I.S — Control de Transparencia, Tema y Ventanas Reales
 
-Cuando el usuario pida ajustar qué tan traslúcido u opaco se ve el fondo de las ventanas flotantes de H.E.R.M.I.S, o cambiar entre fondo claro y oscuro:
+## 1. Ajustar Transparencia (`opacity`) y Tema (`theme`) del Overlay
 
-## Cómo aplicarlo inmediatamente
-
-Llama a la herramienta `render_surface` usando `surface="notification"` e incluyendo `opacity` (porcentaje entero entre `20` y `98`) y/o `theme` (`"light"` o `"dark"`) dentro de `data`:
+Cuando el usuario pida ajustar qué tan traslúcido u opaco se ve el fondo de las ventanas flotantes de H.E.R.M.I.S, o cambiar entre fondo claro y oscuro, llama a `render_surface` usando `surface="notification"` e incluyendo `opacity` (`20` a `98`) y/o `theme` (`"light"` o `"dark"`):
 
 ```json
 {
@@ -22,10 +20,21 @@ Llama a la herramienta `render_surface` usando `surface="notification"` e incluy
 }
 ```
 
-## Guía de valores de `opacity`
 - **Muy traslúcido / cristal ligero:** `55` a `68`
 - **Equilibrado (por defecto):** `82` a `85`
 - **Casi sólido / máxima lectura:** `92` a `96`
-- Si el usuario dice *"más traslúcido"* o *"baja la opacidad"* sin dar un número, usa `65` (o resta ~15 puntos al valor actual).
-- Si el usuario dice *"más opaco"* o *"menos transparente"*, usa `94`.
-- Si el usuario pide *"modo oscuro"* / *"fondo oscuro"* / *"dark mode"*, envía `"theme": "dark"` (y `"theme": "light"` para volver a fondo claro).
+- **Tema oscuro / claro:** `"theme": "dark"` o `"theme": "light"`
+
+## 2. Acomodar Ventanas Reales (`layout_windows`) y Abrir Apps (`launch_app`)
+
+- Si las tools `layout_windows` y `launch_app` están registradas en la sesión, úsalas directamente:
+  - `layout_windows(layout="split"|"grid"|"maximize"|"focus"|"minimize_others", windows=["Excel", "Chrome"])`
+  - `launch_app(app="notepad"|"calc"|"explorer"|"chrome"|"code"|..., args=[...])`
+- Si la sesión actual del Gateway se inició antes de registrar `layout_windows` / `launch_app`, puedes invocar el módulo directamente con Python:
+  ```powershell
+  python -c "import win32_windows, json; print(json.dumps(win32_windows.apply_layout('split', ['PowerShell', 'Chrome']), ensure_ascii=False))"
+  ```
+  o para abrir una app:
+  ```powershell
+  python -c "import win32_windows, json; print(json.dumps(win32_windows.launch_application('notepad'), ensure_ascii=False))"
+  ```

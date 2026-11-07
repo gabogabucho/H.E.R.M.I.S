@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from . import overlay_launcher
+from . import win32_windows
 from . import ws_server
 
 SURFACES = (
@@ -100,6 +101,16 @@ def _maybe_start_overlay(delivered: int) -> str | None:
         return f"no se pudo abrir el overlay: {exc}"
 
 
+def _refresh_windows_cache(st: dict[str, Any]) -> None:
+    """Actualiza el listado de ventanas visibles en el diccionario de estado."""
+    try:
+        titles = [w["title"] for w in win32_windows.list_open_windows()[:15] if isinstance(w.get("title"), str)]
+        if titles:
+            st["windows"] = titles
+    except Exception:
+        pass
+
+
 def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     """Activa o desactiva el Modo Piloto Automático y persiste el estado."""
     if not isinstance(args, dict):
@@ -110,8 +121,11 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     active = state == "on"
     st = ws_server.load_state()
     st["autopilot"] = active
-    if not active:
+    if active:
+        _refresh_windows_cache(st)
+    else:
         st["surfaces"] = {}
+        st.pop("windows", None)
     ws_server.save_state(st)
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     if active:
@@ -230,11 +244,55 @@ def list_surfaces(args: dict[str, Any] | None = None, **kwargs: Any) -> str:
     })
 
 
+def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
+    """Acomoda, enfoca o maximiza ventanas reales del escritorio de Windows."""
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args", "message": "args debe ser un objeto"})
+    layout = args.get("layout")
+    windows = args.get("windows")
+    if layout not in win32_windows.LAYOUTS:
+        return _json({
+            "ok": False,
+            "error": "invalid_layout",
+            "message": f"layout debe ser uno de: {', '.join(win32_windows.LAYOUTS)}",
+        })
+    if not isinstance(windows, list) or not windows or not all(_non_empty_str(w) for w in windows):
+        return _json({
+            "ok": False,
+            "error": "invalid_windows",
+            "message": "windows debe ser una lista no vacía de nombres o títulos de ventana",
+        })
+    queries = [str(w).strip() for w in windows]
+    res = win32_windows.apply_layout(layout, queries)
+    st = ws_server.load_state()
+    _refresh_windows_cache(st)
+    ws_server.save_state(st)
+    return _json(res)
+
+
+def launch_app(args: dict[str, Any], **kwargs: Any) -> str:
+    """Abre una aplicación de escritorio por nombre o alias sin usar shell."""
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args", "message": "args debe ser un objeto"})
+    app = args.get("app")
+    if not _non_empty_str(app):
+        return _json({"ok": False, "error": "invalid_app", "message": "app debe ser un string no vacío"})
+    raw_args = args.get("args")
+    if raw_args is not None and (not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args)):
+        return _json({"ok": False, "error": "invalid_args_list", "message": "args debe ser una lista de strings"})
+    res = win32_windows.launch_application(str(app).strip(), raw_args)
+    st = ws_server.load_state()
+    _refresh_windows_cache(st)
+    ws_server.save_state(st)
+    return _json(res)
+
+
 def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
-    """Inyecta instrucciones del Modo Piloto Automático y contexto de superficies abiertas."""
+    """Inyecta instrucciones del Modo Piloto Automático y contexto de superficies y ventanas abiertas."""
     st = ws_server.load_state()
     autopilot_on = bool(st.get("autopilot", False))
     surfaces: dict[str, Any] = st.get("surfaces") or {}
+    windows: list[str] = st.get("windows") if isinstance(st.get("windows"), list) else []
     if not autopilot_on and not surfaces:
         return None
 
@@ -250,6 +308,8 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
             "usando `EMAIL_ADDRESS` y `EMAIL_PASSWORD` del `.env` de Hermes si `google-workspace` no tiene token) y muestra el resultado con `render_surface` "
             "surface=email_list (items con id, from, subject, snippet, date y body_markdown si lo hay); "
             "'abre el de Juan' / 'abre el tercero' / 'open the third one' se resuelven con lo que ya figura en pantalla, sin volver a consultar.\n"
+            "- Ventanas y apps reales / Real desktop windows & apps: usa `layout_windows` (split, grid, maximize, focus, minimize_others) "
+            "para acomodar o enfocar ventanas reales del escritorio y `launch_app` para abrir aplicaciones.\n"
             "- Transparencia y tema / Opacity & theme: si el usuario pide subir/bajar la transparencia (opacidad) del fondo o cambiar entre modo claro y oscuro, "
             "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'}` "
             "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."
@@ -269,6 +329,10 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
                         subj = item.get("subject", "")
                         body = item.get("body_markdown") or item.get("snippet") or ""
                         lines.append(f"  #{idx} de={sender!r} asunto={subj!r} texto={str(body)[:200]!r}")
+    if windows:
+        lines.append("[Ventanas del escritorio en caché]")
+        for wtitle in windows[:15]:
+            lines.append(f"- {wtitle}")
     return {"context": "\n".join(lines)}
 
 

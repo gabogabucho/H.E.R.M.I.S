@@ -35,4 +35,8 @@ def register(ctx) -> None:
                       schema=schemas.CLOSE_SURFACE_SCHEMA, handler=tools.close_surface)
     ctx.register_tool(name="list_surfaces", toolset="hermis",
                       schema=schemas.LIST_SURFACES_SCHEMA, handler=tools.list_surfaces)
+    ctx.register_tool(name="layout_windows", toolset="hermis",
+                      schema=schemas.LAYOUT_WINDOWS_SCHEMA, handler=tools.layout_windows)
+    ctx.register_tool(name="launch_app", toolset="hermis",
+                      schema=schemas.LAUNCH_APP_SCHEMA, handler=tools.launch_app)
     ctx.register_hook("pre_llm_call", tools.pre_llm_call)

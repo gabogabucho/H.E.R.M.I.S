@@ -31,6 +31,7 @@ sys.modules["hermis"] = hermis
 _spec.loader.exec_module(hermis)  # type: ignore[union-attr]
 schemas, tools, ws_server = hermis.schemas, hermis.tools, hermis.ws_server
 overlay_launcher = hermis.overlay_launcher
+win32_windows = hermis.win32_windows
 
 
 class SkeletonTest(unittest.TestCase):
@@ -51,6 +52,8 @@ class SkeletonTest(unittest.TestCase):
         self.assertEqual(schemas.RENDER_SURFACE_SCHEMA["name"], "render_surface")
         self.assertEqual(schemas.CLOSE_SURFACE_SCHEMA["name"], "close_surface")
         self.assertEqual(schemas.LIST_SURFACES_SCHEMA["name"], "list_surfaces")
+        self.assertEqual(schemas.LAYOUT_WINDOWS_SCHEMA["name"], "layout_windows")
+        self.assertEqual(schemas.LAUNCH_APP_SCHEMA["name"], "launch_app")
 
         bad_cases = [
             None,
@@ -300,7 +303,7 @@ class SkeletonTest(unittest.TestCase):
     def test_ws_handshake_and_broadcast(self) -> None:
         ctx = MagicMock(plugin_data_dir=self.tmp)
         hermis.register(ctx)
-        self.assertEqual(ctx.register_tool.call_count, 4)
+        self.assertEqual(ctx.register_tool.call_count, 6)
         ctx.register_hook.assert_called_once_with("pre_llm_call", tools.pre_llm_call)
 
         info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
@@ -536,9 +539,66 @@ class AutostartTest(unittest.TestCase):
     def test_register_never_launches_overlay(self) -> None:
         ctx = MagicMock(plugin_data_dir=self.tmp)
         hermis.register(ctx)
-        self.assertEqual(ctx.register_tool.call_count, 4)
+        self.assertEqual(ctx.register_tool.call_count, 6)
         self.assertTrue((Path(self.tmp) / "overlay.json").exists())
         self.assertFalse((Path(self.tmp) / "overlay.launch").exists())
+
+    def test_day3_layout_windows_and_launch_app(self) -> None:
+        os.environ["HERMIS_OVERLAY_AUTOSTART"] = "0"
+        # Validaciones de entrada de layout_windows y launch_app
+        self.assertFalse(json.loads(tools.layout_windows(None))["ok"])  # type: ignore[arg-type]
+        self.assertFalse(json.loads(tools.layout_windows({"layout": "bad", "windows": ["A"]}))["ok"])
+        self.assertFalse(json.loads(tools.layout_windows({"layout": "split", "windows": []}))["ok"])
+        self.assertFalse(json.loads(tools.launch_app(None))["ok"])  # type: ignore[arg-type]
+        self.assertFalse(json.loads(tools.launch_app({"app": "   "}))["ok"])
+        self.assertFalse(json.loads(tools.launch_app({"app": "notepad; rm -rf /"}))["ok"])
+
+        fake_wins = [
+            {"hwnd": 101, "title": "Notas.xlsx - Excel", "x": 0, "y": 0, "width": 800, "height": 600},
+            {"hwnd": 102, "title": "Trabajos - Google Chrome", "x": 100, "y": 100, "width": 800, "height": 600},
+            {"hwnd": 103, "title": "Visual Studio Code", "x": 200, "y": 200, "width": 800, "height": 600},
+        ]
+        moved: list[tuple] = []
+        with patch.object(win32_windows, "is_windows", lambda: True), \
+             patch.object(win32_windows, "list_open_windows", lambda: fake_wins), \
+             patch.object(win32_windows, "get_work_area", lambda: (0, 0, 1920, 1000)), \
+             patch.object(win32_windows, "_move_window", lambda *a: moved.append(a) or True), \
+             patch.object(win32_windows, "_maximize_window", lambda hwnd: True), \
+             patch.object(win32_windows, "_focus_window", lambda hwnd: True), \
+             patch.object(win32_windows, "_minimize_window", lambda hwnd: True):
+            res_split = json.loads(tools.layout_windows({"layout": "split", "windows": ["Excel", "Chrome"]}))
+            self.assertTrue(res_split["ok"])
+            self.assertEqual(len(res_split["matched"]), 2)
+            self.assertEqual(res_split["matched"][0]["x"], 0)
+            self.assertEqual(res_split["matched"][0]["width"], 960)
+            self.assertEqual(res_split["matched"][1]["x"], 960)
+            self.assertEqual(res_split["matched"][1]["width"], 960)
+
+            res_grid = json.loads(tools.layout_windows({"layout": "grid", "windows": ["Excel", "Chrome", "Code"]}))
+            self.assertTrue(res_grid["ok"])
+            self.assertEqual(len(res_grid["matched"]), 3)
+
+            res_min = json.loads(tools.layout_windows({"layout": "minimize_others", "windows": ["Excel"]}))
+            self.assertTrue(res_min["ok"])
+            self.assertEqual(res_min["matched"][0]["minimized_others"], 2)
+
+            # Verificar que las ventanas abiertas quedaron en caché para pre_llm_call
+            tools.autopilot({"state": "on"})
+            ctx = tools.pre_llm_call()
+            self.assertIsNotNone(ctx)
+            self.assertIn("Notas.xlsx - Excel", ctx["context"])  # type: ignore[index]
+
+        # Verificar launch_app sin shell=True
+        popen_calls: list = []
+        fake_proc = MagicMock(pid=4242)
+        with patch.object(win32_windows, "is_windows", lambda: True), \
+             patch.object(win32_windows.shutil, "which", lambda exe: f"C:\\Windows\\System32\\{exe}"), \
+             patch.object(win32_windows.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k)) or fake_proc):
+            launched = json.loads(tools.launch_app({"app": "bloc de notas", "args": ["notas.txt"]}))
+            self.assertTrue(launched["ok"])
+            self.assertEqual(launched["pid"], 4242)
+            self.assertEqual(popen_calls[0][0][0], ["C:\\Windows\\System32\\notepad.exe", "notas.txt"])
+            self.assertNotIn("shell", popen_calls[0][1])
 
 
 async def _listen(demo: bool = False) -> None:
