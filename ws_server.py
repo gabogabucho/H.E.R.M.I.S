@@ -21,6 +21,7 @@ import os
 import secrets
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -70,14 +71,30 @@ def data_dir() -> Path:
     return _data_dir(_STATE["data_dir_override"])
 
 
+def _atomic_write_text(target: Path, content: str) -> None:
+    """Escritura atómica tolerante a bloqueos transitorios de lectura en Windows ([WinError 5])."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    for attempt in range(5):
+        try:
+            os.replace(tmp, target)
+            return
+        except PermissionError:
+            if attempt < 4:
+                time.sleep(0.02)
+    try:
+        target.write_text(content, encoding="utf-8")
+    finally:
+        with contextlib.suppress( OSError):
+            tmp.unlink(missing_ok=True)
+
+
 def _write_overlay_info(port: int, token: str, data_dir: Path | str | None = None) -> None:
     """Puerto y token de la sesión, escritura atómica; el overlay lee esto."""
     info = {"host": _HOST, "port": port, "token": token, "pid": os.getpid()}
     target = _data_dir(data_dir) / "overlay.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"overlay.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(info), encoding="utf-8")
-    os.replace(tmp, target)
+    _atomic_write_text(target, json.dumps(info))
     logger.info("overlay.json listo (puerto %s)", port)
 
 
@@ -105,10 +122,7 @@ def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> Non
     """Persiste state.json de forma atómica en plugin_data_dir."""
     target = _data_dir(data_dir if data_dir is not None else _STATE["data_dir_override"]) / "state.json"
     with _lock:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(f"state.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, target)
+        _atomic_write_text(target, json.dumps(state, ensure_ascii=False))
 
 
 async def _handler(conn: Any) -> None:
