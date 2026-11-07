@@ -22,9 +22,10 @@ def _schema(name: str, description: str, properties: dict[str, Any],
 AUTOPILOT_SCHEMA = _schema(
     "autopilot",
     "Activate or deactivate H.E.R.M.I.S Autopilot Mode ('on' | 'off'). Call with "
-    "state='on' when the user says 'modo piloto automático' (or 'activá el piloto "
-    "automático', 'entramos en modo piloto automático') and with state='off' when "
-    "they say 'salí del piloto automático' (or ask to leave autopilot). When 'on', "
+    "state='on' when the user says 'modo piloto automático', 'activa el piloto "
+    "automático', 'autopilot mode', or 'enable autopilot', and with state='off' when "
+    "they say 'sal del piloto automático', 'desactiva el piloto automático', or "
+    "'exit autopilot'. When 'on', "
     "the desktop overlay morphs into the floating orb and Hermes speaks short "
     "voice replies while drawing rich data surfaces on screen via render_surface. "
     "When 'off', clears open surfaces and returns to normal mode.",

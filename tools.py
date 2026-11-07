@@ -154,8 +154,16 @@ def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
         if isinstance(raw_id, str):
             surface_id = raw_id.strip()
         else:
-            st["seq"] = int(st.get("seq", 0)) + 1
-            surface_id = f"{surface}-{st['seq']}"
+            existing_id = next(
+                (sid for sid, entry in (st.get("surfaces") or {}).items()
+                 if isinstance(entry, dict) and entry.get("surface") == surface and entry.get("data") == data),
+                None,
+            )
+            if existing_id is not None:
+                surface_id = existing_id
+            else:
+                st["seq"] = int(st.get("seq", 0)) + 1
+                surface_id = f"{surface}-{st['seq']}"
         st.setdefault("surfaces", {})[surface_id] = {
             "id": surface_id,
             "surface": surface,
@@ -233,12 +241,15 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
     lines: list[str] = []
     if autopilot_on:
         lines.append(
-            "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO]\n"
-            "- Respondé en 1–2 frases cortas para ser habladas por voz (no leas listas ni markdown en voz alta).\n"
-            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) mostralo con `render_surface`.\n"
-            "- Correo: leé Gmail con la skill `google-workspace` y mostrá el resultado con `render_surface` "
+            "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO / Autopilot Mode ACTIVE]\n"
+            "- Idioma / Language: responde siempre en el mismo idioma que use el usuario "
+            "(si es español, usa español neutro sin modismos regionales ni voseo; if English or another language, reply in that language).\n"
+            "- Responde en 1–2 frases cortas para ser habladas por voz (no leas listas ni markdown en voz alta).\n"
+            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) muéstralo con `render_surface`.\n"
+            "- Correo / Email: lee Gmail con la skill `google-workspace` (o por IMAP SSL en `imap.gmail.com:993` con Python `imaplib` "
+            "usando `EMAIL_ADDRESS` y `EMAIL_PASSWORD` del `.env` de Hermes si `google-workspace` no tiene token) y muestra el resultado con `render_surface` "
             "surface=email_list (items con id, from, subject, snippet, date y body_markdown si lo hay); "
-            "'abrí el de Juan' o 'abrí el tercero' se resuelven con lo que ya figura en pantalla, sin volver a leer."
+            "'abre el de Juan' / 'abre el tercero' / 'open the third one' se resuelven con lo que ya figura en pantalla, sin volver a consultar."
         )
     if surfaces:
         lines.append("[Superficies abiertas en pantalla]")

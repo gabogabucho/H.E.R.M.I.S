@@ -61,7 +61,18 @@ lumen-orb {
   height: var(--orb-size);
   z-index: 100;
   cursor: pointer;
+  /* El orbe solo se ve con el piloto automático activo (mode). */
+  display: none;
+}
+
+lumen-orb.autopilot {
   display: block;
+  animation: orb-fade-in 0.25s ease;
+}
+
+@keyframes orb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .orb-container {
@@ -231,13 +242,98 @@ lumen-orb {
   100% { transform: scale(0.88); opacity: 1; }
 }
 
-/* autopilot: modo piloto automático encendido (Día 2 trae el morph) */
+/* autopilot: modo piloto automático encendido */
 lumen-orb.autopilot .orb-svg {
   filter: drop-shadow(0 0 30px var(--lumen-accent));
 }
 
 lumen-orb.autopilot .orb-lines {
   animation: orb-line-shift 1.1s ease-in-out infinite alternate;
+}
+
+/* =============================================
+   MORPH — intro inmersiva y salida del modo
+   (boceto pantallas 1 y 2). Capa pointer-events:
+   none: los clics siguen pasando al escritorio.
+   ============================================= */
+
+#morph-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: none;
+}
+
+#morph-layer.hidden {
+  display: none;
+}
+
+.morph-veil {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(0, 113, 227, 0.18) 0, rgba(0, 113, 227, 0) 420px),
+    rgba(10, 12, 17, 0.6);
+}
+
+.morph-shape {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #9ADCFB 0, #0071E3 50%, #00306B 100%);
+  box-shadow: 0 0 60px rgba(0, 113, 227, 0.55);
+  opacity: 0;
+}
+
+.morph-bar-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 520px;
+  max-width: 82vw;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  font-size: 15px;
+  color: #CDD3DD;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+}
+
+.morph-bar-label::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #9ADCFB 0, #0071E3 60%, #00306B 100%);
+  flex-shrink: 0;
+}
+
+.morph-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 58%;
+  text-align: center;
+  font-size: clamp(28px, 3.4vw, 44px);
+  font-weight: 500;
+  color: #F2F4F8;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #morph-layer,
+  #morph-layer * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* =============================================
@@ -401,6 +497,206 @@ lumen-window {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* =============================================
+   SUPERFICIES del Día 2
+   ============================================= */
+
+.surface-body {
+  min-width: 0;
+}
+
+/* email_list (boceto pantalla 3): numerada, remitente + asunto + fecha */
+.email-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.email-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.email-row.expandable {
+  cursor: pointer;
+}
+
+.email-row.expandable:hover {
+  background: rgba(0, 113, 227, 0.06);
+}
+
+.email-num {
+  width: 20px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--lumen-text-muted);
+  text-align: right;
+}
+
+.email-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.email-from {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--lumen-text);
+}
+
+.email-subject,
+.email-snippet {
+  font-size: 0.82rem;
+  color: #555A63;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.email-snippet {
+  font-size: 0.78rem;
+  color: var(--lumen-text-muted);
+}
+
+.email-date {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--lumen-text-muted);
+}
+
+.email-detail {
+  padding: 6px 4px 12px 30px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.email-markdown {
+  font-size: 0.85rem;
+}
+
+/* table */
+.surface-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.surface-table th,
+.surface-table td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.surface-table th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
+.surface-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.surface-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.card-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #E8F1FD;
+  color: #0058B0;
+}
+
+.card-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding-right: 44px;
+}
+
+.card-subtitle {
+  font-size: 0.78rem;
+  color: var(--lumen-text-muted);
+  margin-top: 2px;
+}
+
+.card-body {
+  font-size: 0.8rem;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* image */
+.surface-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+/* web: tarjeta + botón (la página no se embebe) */
+.web-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.web-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.web-domain {
+  font-size: 0.8rem;
+  color: var(--lumen-primary);
+}
+
+.web-url {
+  font-size: 0.75rem;
+  color: var(--lumen-text-muted);
+  word-break: break-all;
+}
+
+.web-open {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--lumen-primary);
+  color: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.web-open:hover {
+  filter: brightness(1.08);
+}
+
+/* custom: iframe sandbox sin allow-scripts */
+.surface-frame {
+  width: 100%;
+  height: 340px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
 }
 
 /* =============================================

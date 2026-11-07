@@ -1,20 +1,29 @@
 /**
- * shell.js — H.E.R.M.I.S overlay shell (Día 1)
+ * shell.js — H.E.R.M.I.S overlay shell
  * Portado de Lumen OS (gabogabucho/Lumen-os, os/shell/shell.js): <lumen-orb>,
  * <lumen-window> y notificaciones. Sin sesión ni WS propio (viven en el main
- * de Electron) ni apps de Lumen. El adaptador traduce x-lumen-desktop v2.
+ * de Electron) ni apps de Lumen. El adaptador traduce x-lumen-desktop v2:
+ * morph de modo (Día 2) y componentes de superficie (email_list, table,
+ * cards, image, web, custom).
  */
 
 'use strict';
 
 const ORB_SIZE = 96;
+const ORB_RIGHT = 32;
+const ORB_BOTTOM = 72;
+// La barra de chat del boceto (pantalla 1) mide 520x64; el morph la dibuja
+// escalando el orbe, así la interpolación transform es siempre limpia.
+const BAR_SCALE_X = 520 / ORB_SIZE;
+const BAR_SCALE_Y = 64 / ORB_SIZE;
+const INTRO_MS = 2400;
+const INTRO_TEXT = '¿Qué hacemos hoy?';
+const BAR_HINT = 'Pregúntale algo a Hermes…';
 const WINDOW_MARGIN = 20;
 const WINDOW_WIDTH = 480;
 const WINDOW_HEIGHT = 320;
 const NOTIF_LIFETIME_MS = 4000;
 const NOTIF_LEVELS = ['info', 'success', 'error'];
-// Superficies del Día 2 sin componente propio: se muestran genéricas y seguras.
-const GENERIC_SURFACES = ['email_list', 'table', 'cards', 'web', 'image', 'custom'];
 
 function generateId(prefix = 'win') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
@@ -237,6 +246,266 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Único HTML permitido en el shell: markdown pasado por DOMPurify. El
+// markdown puede venir de correos de terceros: se prohíbe <style> y el
+// atributo style porque con la CSP 'unsafe-inline' un CSS inyectado podría
+// tapar la pantalla o dibujar UI falsa. (El HTML de la superficie custom
+// conserva estilos: vive dentro del iframe sandbox, sin scripts.)
+function markdownToHtml(md) {
+  try {
+    return DOMPurify.sanitize(marked.parse(String(md)), { FORBID_TAGS: ['style'], FORBID_ATTR: ['style'] });
+  } catch (e) {
+    console.warn('[shell] markdown falló, muestro texto plano:', e.message);
+    const pre = document.createElement('pre');
+    pre.textContent = String(md);
+    return pre.innerHTML;
+  }
+}
+
+function cellText(v) {
+  return v === null || v === undefined ? '' : String(v);
+}
+
+function formatSender(raw) {
+  const s = cellText(raw).trim();
+  if (!s) return '';
+  const m = s.match(/^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/);
+  return m && m[1].trim() ? m[1].trim() : s.replace(/^"+|"+$/g, '');
+}
+
+function formatEmailDate(raw) {
+  const s = cellText(raw).trim();
+  if (!s) return '';
+  // Si parece una fecha RFC-2822 / ISO larga (ej. "Sat, 07 Nov 2026 16:14:23 +0000"), formatearla limpia
+  if (/^\w{3},\s+\d{1,2}\s+\w{3}\s+\d{4}\b/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) + ' ' +
+        d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+  }
+  return s;
+}
+
+// =============================================
+// Componentes de superficie del Día 2 (contrato schemas.py).
+// Cada renderer dibuja con textContent (nunca HTML salvo markdown por
+// DOMPurify) y devuelve false si los datos vienen mal formados: en ese caso
+// la superficie cae a la vista genérica de texto en vez de romper.
+// =============================================
+
+function renderEmailList(body, data) {
+  if (!Array.isArray(data.items) || !data.items.length) return false;
+  const items = data.items.filter((it) => it && typeof it === 'object' &&
+    ((typeof it.from === 'string' && it.from) || (typeof it.subject === 'string' && it.subject)));
+  if (!items.length) return false;
+  const list = document.createElement('div');
+  list.className = 'email-list';
+  items.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'email-row';
+    const num = document.createElement('span');
+    num.className = 'email-num';
+    num.textContent = String(i + 1);
+    const main = document.createElement('div');
+    main.className = 'email-main';
+    const from = document.createElement('div');
+    from.className = 'email-from';
+    from.textContent = formatSender(item.from) || item.subject;
+    if (item.from) from.title = item.from;
+    main.appendChild(from);
+    if (item.from && item.subject) {
+      const subj = document.createElement('div');
+      subj.className = 'email-subject';
+      subj.textContent = item.subject;
+      main.appendChild(subj);
+    }
+    if (typeof item.snippet === 'string' && item.snippet) {
+      const snippet = document.createElement('div');
+      snippet.className = 'email-snippet';
+      snippet.textContent = item.snippet;
+      main.appendChild(snippet);
+    }
+    const date = document.createElement('span');
+    date.className = 'email-date';
+    date.textContent = formatEmailDate(item.date);
+    if (item.date) date.title = String(item.date);
+    row.append(num, main, date);
+    list.appendChild(row);
+    // Un correo con body_markdown se expande en el lugar (numerados para
+    // "abrí el tercero").
+    if (typeof item.body_markdown === 'string' && item.body_markdown) {
+      row.classList.add('expandable');
+      const detail = document.createElement('div');
+      detail.className = 'email-detail hidden';
+      list.appendChild(detail);
+      row.addEventListener('click', () => {
+        if (!detail.firstChild) {
+          const md = document.createElement('div');
+          md.className = 'email-markdown document-body';
+          md.innerHTML = markdownToHtml(item.body_markdown);
+          detail.appendChild(md);
+        }
+        detail.classList.toggle('hidden');
+      });
+    }
+  });
+  body.appendChild(list);
+  return true;
+}
+
+function renderTable(body, data) {
+  const cols = Array.isArray(data.columns)
+    ? data.columns.filter((c) => typeof c === 'string' && c)
+    : null;
+  if (!cols || !cols.length || !Array.isArray(data.rows) || !data.rows.length) return false;
+  if (!data.rows.every((r) => Array.isArray(r) || (r && typeof r === 'object'))) return false;
+  const table = document.createElement('table');
+  table.className = 'surface-table';
+  const head = table.createTHead().insertRow();
+  for (const col of cols) {
+    const th = document.createElement('th');
+    th.textContent = col;
+    head.appendChild(th);
+  }
+  const tbody = table.createTBody();
+  for (const row of data.rows) {
+    const tr = tbody.insertRow();
+    if (Array.isArray(row)) {
+      for (let i = 0; i < cols.length; i++) {
+        tr.insertCell().textContent = cellText(row[i]);
+      }
+    } else {
+      for (const col of cols) {
+        tr.insertCell().textContent = cellText(row[col]);
+      }
+    }
+  }
+  body.appendChild(table);
+  return true;
+}
+
+function renderCards(body, data) {
+  if (!Array.isArray(data.items) || !data.items.length) return false;
+  const items = data.items.filter((it) => it && typeof it === 'object' &&
+    typeof it.title === 'string' && it.title);
+  if (!items.length) return false;
+  const grid = document.createElement('div');
+  grid.className = 'cards-grid';
+  for (const item of items) {
+    const card = document.createElement('div');
+    card.className = 'surface-card';
+    if (typeof item.badge === 'string' && item.badge) {
+      const badge = document.createElement('span');
+      badge.className = 'card-badge';
+      badge.textContent = item.badge;
+      card.appendChild(badge);
+    }
+    const title = document.createElement('div');
+    title.className = 'card-title';
+    title.textContent = item.title;
+    card.appendChild(title);
+    if (typeof item.subtitle === 'string' && item.subtitle) {
+      const subtitle = document.createElement('div');
+      subtitle.className = 'card-subtitle';
+      subtitle.textContent = item.subtitle;
+      card.appendChild(subtitle);
+    }
+    if (typeof item.body === 'string' && item.body) {
+      const text = document.createElement('div');
+      text.className = 'card-body';
+      text.textContent = item.body;
+      card.appendChild(text);
+    }
+    grid.appendChild(card);
+  }
+  body.appendChild(grid);
+  return true;
+}
+
+// Solo https: y data:image/... (la CSP lo refleja).
+function isAllowedImageUrl(url) {
+  return typeof url === 'string' && (/^https:\/\/\S+$/i.test(url) || /^data:image\//i.test(url));
+}
+
+function renderImage(body, data) {
+  const src = typeof data.src === 'string' && data.src ? data.src : data.url;
+  if (!isAllowedImageUrl(src)) return false;
+  const img = document.createElement('img');
+  img.className = 'surface-image';
+  img.src = src;
+  img.alt = typeof data.alt === 'string' ? data.alt : '';
+  img.loading = 'lazy';
+  body.classList.add('image-body');
+  body.appendChild(img);
+  return true;
+}
+
+// La página no se embebe (los iframes suelen estar bloqueados): tarjeta con
+// título, dominio y botón que abre en el navegador vía IPC (validado en main).
+function renderWeb(body, data) {
+  const url = typeof data.url === 'string' && data.url ? data.url : '';
+  if (!/^https?:\/\/\S+$/i.test(url)) return false;
+  let domain = url;
+  try {
+    domain = new URL(url).hostname;
+  } catch (e) {
+    // url ya validada por el regex; no debería pasar
+  }
+  const card = document.createElement('div');
+  card.className = 'web-card';
+  const title = document.createElement('div');
+  title.className = 'web-title';
+  title.textContent = typeof data.title === 'string' && data.title ? data.title : domain;
+  const dom = document.createElement('div');
+  dom.className = 'web-domain';
+  dom.textContent = domain;
+  const link = document.createElement('div');
+  link.className = 'web-url';
+  link.textContent = url;
+  const btn = document.createElement('button');
+  btn.className = 'web-open';
+  btn.type = 'button';
+  btn.textContent = 'Abrir en el navegador';
+  btn.addEventListener('click', () => {
+    window.hermis.openExternal(url).catch((e) => console.warn('[shell] no se pudo abrir:', e && e.message));
+  });
+  card.append(title, dom, link, btn);
+  body.appendChild(card);
+  return true;
+}
+
+// Salida de emergencia aislada: HTML saneado con DOMPurify dentro de un
+// <iframe sandbox=""> (sin allow-scripts, origen opaco) con srcdoc.
+function renderCustom(body, data) {
+  if (typeof data.html !== 'string' || !data.html) return false;
+  const frame = document.createElement('iframe');
+  frame.className = 'surface-frame';
+  frame.setAttribute('sandbox', '');
+  frame.srcdoc = DOMPurify.sanitize(data.html);
+  body.classList.add('custom-body');
+  body.appendChild(frame);
+  return true;
+}
+
+const SURFACE_RENDERERS = {
+  email_list: renderEmailList,
+  table: renderTable,
+  cards: renderCards,
+  image: renderImage,
+  web: renderWeb,
+  custom: renderCustom,
+};
+
+const SURFACE_TITLES = {
+  email_list: 'Correos',
+  table: 'Tabla',
+  cards: 'Tarjetas',
+  image: 'Imagen',
+  web: 'Enlace',
+  custom: 'Contenido',
+};
+
 // =============================================
 // <lumen-shell>
 // =============================================
@@ -246,6 +515,8 @@ class LumenShell extends HTMLElement {
     this.windows = new Map();
     this._interactive = false;
     this.autopilot = false;
+    this._morphAnims = [];
+    this._morphTimers = [];
   }
 
   connectedCallback() {
@@ -260,6 +531,12 @@ class LumenShell extends HTMLElement {
       <lumen-orb id="orb" state="idle"></lumen-orb>
       <div id="windows-container"></div>
       <div id="notifications-container"></div>
+      <div id="morph-layer" class="hidden">
+        <div class="morph-veil"></div>
+        <div class="morph-shape"></div>
+        <div class="morph-bar-label">${escapeHtml(BAR_HINT)}</div>
+        <div class="morph-text"></div>
+      </div>
     `;
   }
 
@@ -295,8 +572,8 @@ class LumenShell extends HTMLElement {
       this.openDocument(surfaceId || generateId('doc'), data);
       return;
     }
-    if (GENERIC_SURFACES.includes(surface)) {
-      this.openGeneric(surfaceId || generateId('surface'), surface, data);
+    if (SURFACE_RENDERERS[surface]) {
+      this.openSurface(surfaceId || generateId('surface'), surface, data);
       return;
     }
     console.log('[shell] surface desconocida, ignorada:', surface);
@@ -352,42 +629,46 @@ class LumenShell extends HTMLElement {
     return id;
   }
 
-  // Superficies del Día 2 sin componente: título + datos como texto plano
-  // (textContent, nunca HTML) en una ventana normal.
-  openGeneric(id, surface, data) {
+  // Superficies del Día 2 con componente propio. Con el mismo id se
+  // actualizan en el lugar; datos mal formados caen a la vista genérica.
+  openSurface(id, surface, data) {
     if (this.windows.has(id)) {
-      this.updateWindow(id, 'generic', { surface, data });
+      this.updateWindow(id, surface, data);
       return id;
     }
     const winEl = document.createElement('lumen-window');
     winEl.setAttribute('window-id', id);
-    winEl.setAttribute('title', data.title || surface);
+    winEl.setAttribute('title', data.title || SURFACE_TITLES[surface] || surface);
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
-    const record = { el: winEl, kind: 'generic' };
+    const record = { el: winEl, kind: surface };
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
-    this._setWindowBody(record, 'generic', data);
+    this._setWindowBody(record, surface, data);
     this.windows.set(id, record);
-    console.log('[shell] surface genérica dibujada:', surface, id);
+    console.log('[shell] surface dibujada:', surface, id);
     return id;
   }
 
   _setWindowBody(record, kind, data) {
     const container = record.el.querySelector('.window-content') || record.el;
-    const old = container.querySelector('.document-body, .generic-body');
+    const old = container.querySelector('.surface-body');
     if (old) old.remove();
+    const body = document.createElement('div');
+    body.className = 'surface-body';
+    let rendered = false;
     if (kind === 'document') {
-      const body = document.createElement('div');
-      body.className = 'document-body';
-      body.innerHTML = this._markdownToHtml(data.body_markdown || '');
-      container.appendChild(body);
-    } else {
-      const body = document.createElement('pre');
-      body.className = 'generic-body';
-      body.textContent = this._genericText(data);
-      container.appendChild(body);
+      body.classList.add('document-body');
+      body.innerHTML = markdownToHtml(data.body_markdown || '');
+      rendered = true;
+    } else if (SURFACE_RENDERERS[kind]) {
+      rendered = SURFACE_RENDERERS[kind](body, data);
     }
+    if (!rendered) {
+      body.classList.add('generic-body');
+      body.textContent = this._genericText(data);
+    }
+    container.appendChild(body);
     record.kind = kind;
   }
 
@@ -396,17 +677,6 @@ class LumenShell extends HTMLElement {
       return JSON.stringify(data, null, 2);
     } catch (e) {
       return String(data);
-    }
-  }
-
-  _markdownToHtml(md) {
-    try {
-      return DOMPurify.sanitize(marked.parse(String(md)));
-    } catch (e) {
-      console.warn('[shell] markdown falló, muestro texto plano:', e.message);
-      const pre = document.createElement('pre');
-      pre.textContent = String(md);
-      return pre.innerHTML;
     }
   }
 
@@ -432,12 +702,118 @@ class LumenShell extends HTMLElement {
     if (orb && typeof state === 'string') orb.state = state;
   }
 
-  // mode: por ahora solo se muestra en el orbe (clase CSS); el morph es del Día 2.
+  // mode: morph de barra ↔ orbe. El orbe solo se ve con el piloto automático
+  // activo; si el valor no cambia no se repite la animación. La capa del morph
+  // es pointer-events: none, así los clics siguen pasando al escritorio.
   setAutopilot(on) {
+    if (on === this.autopilot) return;
     this.autopilot = on;
-    console.log('[shell] autopilot:', this.autopilot);
+    console.log('[shell] autopilot:', on);
+    this._cancelMorph();
     const orb = this.querySelector('lumen-orb');
-    if (orb) orb.classList.toggle('autopilot', on);
+    if (!orb) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (on) {
+      if (reduced) {
+        orb.classList.add('autopilot');
+        return;
+      }
+      this._playIntro(orb);
+      return;
+    }
+    const center = this._orbCenter();
+    orb.classList.remove('autopilot');
+    if (!reduced) this._playOutro(center);
+  }
+
+  _orbCenter() {
+    return {
+      x: window.innerWidth - ORB_RIGHT - ORB_SIZE / 2,
+      y: window.innerHeight - ORB_BOTTOM - ORB_SIZE / 2,
+    };
+  }
+
+  _animate(el, keyframes, opts) {
+    const anim = el.animate(keyframes, opts);
+    this._morphAnims.push(anim);
+    return anim;
+  }
+
+  _later(ms, fn) {
+    this._morphTimers.push(setTimeout(fn, ms));
+  }
+
+  _cancelMorph() {
+    for (const anim of this._morphAnims || []) {
+      try { anim.cancel(); } catch (e) { /* ya cancelada */ }
+    }
+    for (const t of this._morphTimers || []) clearTimeout(t);
+    this._morphAnims = [];
+    this._morphTimers = [];
+    const layer = this.querySelector('#morph-layer');
+    if (layer) layer.classList.add('hidden');
+  }
+
+  // Intro inmersiva (~3 s, boceto pantallas 1 y 2): velo → barra de chat en el
+  // centro → se comprime en el orbe → viaja a su lugar abajo a la derecha,
+  // texto "¿Qué hacemos hoy?" y el velo se desvanece.
+  _playIntro(orb) {
+    const layer = this.querySelector('#morph-layer');
+    const veil = layer.querySelector('.morph-veil');
+    const shape = layer.querySelector('.morph-shape');
+    const label = layer.querySelector('.morph-bar-label');
+    const text = layer.querySelector('.morph-text');
+    text.textContent = INTRO_TEXT;
+    layer.classList.remove('hidden');
+
+    const c = this._orbCenter();
+    const dx = c.x - window.innerWidth / 2;
+    const dy = c.y - window.innerHeight / 2;
+    const bar = `translate(-50%, -50%) scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`;
+    const big = 'translate(-50%, -50%) scale(1.75)';
+    const final = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`;
+
+    this._animate(veil, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'forwards', easing: 'ease-out' });
+    this._animate(shape, [
+      { transform: bar, opacity: 0 },
+      { transform: bar, opacity: 1, offset: 0.12 },
+      { transform: big, opacity: 1, offset: 0.5 },
+      { transform: final, opacity: 1 },
+    ], { duration: INTRO_MS, easing: 'cubic-bezier(0.45, 0, 0.2, 1)', fill: 'forwards' });
+    this._animate(label, [
+      { opacity: 0 },
+      { opacity: 1, offset: 0.12 },
+      { opacity: 1, offset: 0.42 },
+      { opacity: 0, offset: 0.5 },
+    ], { duration: INTRO_MS, fill: 'forwards' });
+
+    this._later(1450, () => {
+      this._animate(text, [{ opacity: 0 }, { opacity: 1 }], { duration: 450, fill: 'forwards', easing: 'ease-out' });
+    });
+    this._later(INTRO_MS + 50, () => {
+      orb.classList.add('autopilot');
+      this._animate(shape, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards', easing: 'ease-in' });
+    });
+    this._later(INTRO_MS + 250, () => {
+      this._animate(veil, [{ opacity: 1 }, { opacity: 0 }], { duration: 550, fill: 'forwards', easing: 'ease-in' });
+      this._animate(text, [{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards', easing: 'ease-in' });
+    });
+    this._later(INTRO_MS + 850, () => layer.classList.add('hidden'));
+  }
+
+  // Salida: el orbe se estira en barra y desaparece.
+  _playOutro(center) {
+    const layer = this.querySelector('#morph-layer');
+    const shape = layer.querySelector('.morph-shape');
+    layer.classList.remove('hidden');
+    const dx = center.x - window.innerWidth / 2;
+    const dy = center.y - window.innerHeight / 2;
+    const at = (extra) => `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) ${extra}`;
+    this._animate(shape, [
+      { transform: at('scale(1)'), opacity: 1 },
+      { transform: at(`scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`), opacity: 0 },
+    ], { duration: 750, easing: 'cubic-bezier(0.4, 0, 0.6, 1)', fill: 'forwards' });
+    this._later(800, () => layer.classList.add('hidden'));
   }
 
   _computePosition() {
