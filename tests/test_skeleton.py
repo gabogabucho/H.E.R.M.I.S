@@ -478,7 +478,8 @@ class AutostartTest(unittest.TestCase):
     def test_pipeline_installs_then_starts_detached(self) -> None:
         run_calls: list = []
         popen_calls: list = []
-        with patch.object(overlay_launcher.subprocess, "run", lambda *a, **k: run_calls.append((a, k))), \
+        with patch.object(overlay_launcher.subprocess, "run", lambda *a, **k: (
+                 run_calls.append((a, k)) or subprocess.CompletedProcess(a[0], 0))), \
              patch.object(overlay_launcher.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k))):
             overlay_launcher._launch_pipeline("NPM.EXE", self.fake_overlay, Path(self.tmp), True)
             self.assertEqual(run_calls[0][0][0], ["NPM.EXE", "ci"])
@@ -502,6 +503,20 @@ class AutostartTest(unittest.TestCase):
             overlay_launcher._launch_pipeline("NPM.EXE", self.fake_overlay, Path(self.tmp), False)
         self.assertEqual(run_calls, [])
         self.assertEqual(len(popen_calls), 1)
+
+    def test_pipeline_stops_when_install_fails(self) -> None:
+        popen_calls: list = []
+        with patch.object(overlay_launcher.subprocess, "run",
+                          lambda *a, **k: subprocess.CompletedProcess(a[0], 7)), \
+             patch.object(overlay_launcher.subprocess, "Popen",
+                          lambda *a, **k: popen_calls.append((a, k))):
+            overlay_launcher._pipeline_busy = True
+            overlay_launcher._launch_pipeline("NPM.EXE", self.fake_overlay, Path(self.tmp), True)
+
+        self.assertEqual(popen_calls, [])
+        self.assertIn(b"npm ci failed with exit code 7",
+                      (Path(self.tmp) / "overlay.log").read_bytes())
+        self.assertFalse(overlay_launcher._pipeline_busy)
 
     def test_tools_trigger_overlay_launch(self) -> None:
         # autopilot(on) lanza el overlay y lo avisa en la note

@@ -80,9 +80,13 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
         with open(data_dir / _LOG_FILE, "ab") as log:
             if installing:
                 try:
-                    subprocess.run([npm, "ci"], cwd=str(overlay_path),
-                                   stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                   timeout=_INSTALL_TIMEOUT_S, **_detach_kwargs())
+                    result = subprocess.run([npm, "ci"], cwd=str(overlay_path),
+                                            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                            timeout=_INSTALL_TIMEOUT_S, **_detach_kwargs())
+                    if result.returncode != 0:
+                        log.write(f"\n[hermis] npm ci failed with exit code {result.returncode}\n"
+                                  .encode("utf-8", "replace"))
+                        return
                 except subprocess.TimeoutExpired:
                     log.write(b"\n[hermis] npm ci tardo demasiado; intento cancelado\n")
                     return
