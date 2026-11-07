@@ -45,7 +45,7 @@ RENDER_SURFACE_SCHEMA = _schema(
     "always-on-top overlay; clicks pass through where nothing is drawn). Send "
     "data, not HTML — the overlay has the components (x-lumen-desktop v2). "
     "Surfaces: "
-    "'notification' {text, level?: 'info'|'success'|'error'}; "
+    "'notification' {text, level?: 'info'|'success'|'error', opacity?: 20..98, theme?: 'light'|'dark'}; "
     "'document' {title?, body_markdown?}; "
     "'email_list' {title?, items: [{id?, from, subject, snippet?, date?, body_markdown?}]}; "
     "'table' {title?, columns: [str], rows: [[cell]|object]}; "

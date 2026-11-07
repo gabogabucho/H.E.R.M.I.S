@@ -249,7 +249,10 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
             "- Correo / Email: lee Gmail con la skill `google-workspace` (o por IMAP SSL en `imap.gmail.com:993` con Python `imaplib` "
             "usando `EMAIL_ADDRESS` y `EMAIL_PASSWORD` del `.env` de Hermes si `google-workspace` no tiene token) y muestra el resultado con `render_surface` "
             "surface=email_list (items con id, from, subject, snippet, date y body_markdown si lo hay); "
-            "'abre el de Juan' / 'abre el tercero' / 'open the third one' se resuelven con lo que ya figura en pantalla, sin volver a consultar."
+            "'abre el de Juan' / 'abre el tercero' / 'open the third one' se resuelven con lo que ya figura en pantalla, sin volver a consultar.\n"
+            "- Transparencia y tema / Opacity & theme: si el usuario pide subir/bajar la transparencia (opacidad) del fondo o cambiar entre modo claro y oscuro, "
+            "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'}` "
+            "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."
         )
     if surfaces:
         lines.append("[Superficies abiertas en pantalla]")

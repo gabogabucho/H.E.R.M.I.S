@@ -179,6 +179,27 @@ function watchOverlayFile() {
   }
 }
 
+function watchRendererFiles() {
+  let reloadTimer = null;
+  try {
+    fs.watch(path.join(__dirname, 'renderer'), () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        if (!win || win.isDestroyed()) return;
+        win.webContents.once('did-finish-load', () => {
+          if (sock) {
+            backoffMs = CONNECT_BACKOFF_MS;
+            sock.terminate();
+          }
+        });
+        win.webContents.reloadIgnoringCache();
+      }, 250);
+    });
+  } catch (e) {
+    // opcional
+  }
+}
+
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
@@ -241,6 +262,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     await createWindow();
     watchOverlayFile();
+    watchRendererFiles();
     connect();
   });
   app.on('window-all-closed', () => app.quit());

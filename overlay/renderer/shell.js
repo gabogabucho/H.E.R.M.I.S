@@ -29,6 +29,56 @@ function generateId(prefix = 'win') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const DEFAULT_OPACITY = 84;
+
+function getSavedOpacity() {
+  try {
+    const val = parseInt(localStorage.getItem('hermis_opacity') || '', 10);
+    if (!Number.isNaN(val) && val >= 50 && val <= 98) return val;
+  } catch (e) { /* ignore */ }
+  return DEFAULT_OPACITY;
+}
+
+function getSavedTheme() {
+  try {
+    return localStorage.getItem('hermis_theme') === 'dark' ? 'dark' : 'light';
+  } catch (e) {
+    return 'light';
+  }
+}
+
+function applyPanelStyle(opacityPct = getSavedOpacity(), theme = getSavedTheme()) {
+  const clamped = Math.max(20, Math.min(98, Number(opacityPct) || DEFAULT_OPACITY));
+  const alpha = (clamped / 100).toFixed(2);
+  const root = document.documentElement;
+  if (theme === 'dark') {
+    root.style.setProperty('--lumen-panel-bg', `rgba(17, 24, 39, ${alpha})`);
+    root.style.setProperty('--lumen-text', '#F1F5F9');
+    root.style.setProperty('--lumen-text-muted', '#94A3B8');
+    root.dataset.theme = 'dark';
+  } else {
+    root.style.setProperty('--lumen-panel-bg', `rgba(244, 246, 250, ${alpha})`);
+    root.style.setProperty('--lumen-text', '#1D1D1F');
+    root.style.setProperty('--lumen-text-muted', '#64748B');
+    root.dataset.theme = 'light';
+  }
+}
+
+function updatePanelStyle(opts = {}) {
+  let opacity = getSavedOpacity();
+  let theme = getSavedTheme();
+  if (typeof opts.opacity === 'number' && !Number.isNaN(opts.opacity)) {
+    const raw = opts.opacity > 0 && opts.opacity <= 1 ? Math.round(opts.opacity * 100) : Math.round(opts.opacity);
+    opacity = Math.max(20, Math.min(98, raw));
+    try { localStorage.setItem('hermis_opacity', String(opacity)); } catch (e) { /* ignore */ }
+  }
+  if (opts.theme === 'dark' || opts.theme === 'light') {
+    theme = opts.theme;
+    try { localStorage.setItem('hermis_theme', theme); } catch (e) { /* ignore */ }
+  }
+  applyPanelStyle(opacity, theme);
+}
+
 // =============================================
 // <lumen-orb>
 // =============================================
@@ -166,6 +216,7 @@ class LumenWindow extends HTMLElement {
         <slot></slot>
       </div>
     `;
+    applyPanelStyle();
   }
 
   _attachEvents() {
@@ -173,7 +224,10 @@ class LumenWindow extends HTMLElement {
     const closeBtn = this.querySelector('.window-close');
 
     if (header) {
-      header.addEventListener('mousedown', (e) => this._startDrag(e));
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        this._startDrag(e);
+      });
     }
     if (closeBtn) {
       closeBtn.addEventListener('click', () => this._close());
@@ -554,7 +608,13 @@ class LumenShell extends HTMLElement {
         this.setShellState(msg.orb);
         break;
       case 'mode':
+        if (msg.opacity !== undefined || msg.theme !== undefined) {
+          updatePanelStyle({ opacity: msg.opacity, theme: msg.theme });
+        }
         this.setAutopilot(!!msg.autopilot);
+        break;
+      case 'style':
+        updatePanelStyle({ opacity: msg.opacity, theme: msg.theme });
         break;
       default:
         console.log('[shell] mensaje desconocido, ignorado:', msg.type);
@@ -563,6 +623,9 @@ class LumenShell extends HTMLElement {
 
   _handleRender(surface, data, id) {
     if (!data || typeof data !== 'object') return;
+    if (data.opacity !== undefined || data.theme !== undefined) {
+      updatePanelStyle({ opacity: data.opacity, theme: data.theme });
+    }
     if (surface === 'notification') {
       this.showNotification(data.text, data.level);
       return;
