@@ -246,10 +246,14 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Único HTML permitido en el shell: markdown pasado por DOMPurify.
+// Único HTML permitido en el shell: markdown pasado por DOMPurify. El
+// markdown puede venir de correos de terceros: se prohíbe <style> y el
+// atributo style porque con la CSP 'unsafe-inline' un CSS inyectado podría
+// tapar la pantalla o dibujar UI falsa. (El HTML de la superficie custom
+// conserva estilos: vive dentro del iframe sandbox, sin scripts.)
 function markdownToHtml(md) {
   try {
-    return DOMPurify.sanitize(marked.parse(String(md)));
+    return DOMPurify.sanitize(marked.parse(String(md)), { FORBID_TAGS: ['style'], FORBID_ATTR: ['style'] });
   } catch (e) {
     console.warn('[shell] markdown falló, muestro texto plano:', e.message);
     const pre = document.createElement('pre');
