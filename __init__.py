@@ -19,6 +19,7 @@ from . import tools
 from . import ws_server
 from . import commands
 from . import orb_lifecycle
+from . import artifact_bridge
 
 logger = logging.getLogger("hermis")
 
@@ -44,6 +45,9 @@ def register(ctx) -> None:
     ctx.register_hook("pre_llm_call", tools.pre_llm_call)
     ctx.register_hook("pre_tool_call", orb_lifecycle.pre_tool_call)
     ctx.register_hook("post_tool_call", orb_lifecycle.post_tool_call)
+    # Hermes invoca todos los callbacks registrados por tipo (lista), así que
+    # el puente de artefactos y el orbe conviven como dos post_llm_call.
+    ctx.register_hook("post_llm_call", artifact_bridge.post_llm_call)
     ctx.register_hook("post_llm_call", orb_lifecycle.post_llm_call)
     ctx.register_command(
         name="hermis", handler=commands.handle,

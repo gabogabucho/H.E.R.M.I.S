@@ -52,7 +52,9 @@ RENDER_SURFACE_SCHEMA = _schema(
     "'cards' {title?, items: [{title, subtitle?, body?, badge?}]}; "
     "'web' {title?, url: 'https://...'}; "
     "'image' {title?, src|url, alt?}; "
-    "'custom' {title?, html} (sandboxed emergency fallback). "
+    "'artifact' {kind: 'html'|'svg', title?, content} (renders a self-contained HTML or SVG "
+    "artifact — e.g. a chart, diagram or dashboard — inside a sandboxed iframe, like Hermes "
+    "Desktop does in its chat; content max 256 KB). "
     "Returns JSON: ok, id (for persistent surfaces), surface, delivered, overlay_connected.",
     {
         "surface": {
@@ -65,7 +67,7 @@ RENDER_SURFACE_SCHEMA = _schema(
                 "cards",
                 "web",
                 "image",
-                "custom",
+                "artifact",
             ],
             "description": "Which overlay component draws the data.",
         },

@@ -73,7 +73,9 @@ class SkeletonTest(unittest.TestCase):
             {"surface": "cards", "data": {"items": []}},
             {"surface": "web", "data": {"url": "ftp://bad"}},
             {"surface": "image", "data": {}},
-            {"surface": "custom", "data": {"html": "   "}},
+            {"surface": "artifact", "data": {"content": "<p>Hola</p>"}},
+            {"surface": "artifact", "data": {"kind": "js", "content": "<p>Hola</p>"}},
+            {"surface": "artifact", "data": {"kind": "html", "content": "   "}},
         ]
         for payload in bad_cases:
             res = json.loads(tools.render_surface(payload))  # type: ignore[arg-type]
@@ -113,7 +115,7 @@ class SkeletonTest(unittest.TestCase):
             ("cards", {"title": "Tareas", "items": [{"title": "Día 2", "badge": "En curso"}]}),
             ("web", {"title": "Docs", "url": "https://hermes-agent.nousresearch.com"}),
             ("image", {"title": "Diagrama", "src": "https://example.com/arch.png", "alt": "Arq"}),
-            ("custom", {"title": "Widget", "html": "<div>Hola</div>"}),
+            ("artifact", {"title": "Gráfico", "kind": "html", "content": "<p>Hola</p>"}),
         ]:
             out = json.loads(tools.render_surface({"surface": surf, "data": data}))
             self.assertTrue(out["ok"], f"falló {surf}: {out}")
@@ -309,7 +311,7 @@ class SkeletonTest(unittest.TestCase):
         hermis.register(ctx)
         self.assertEqual(ctx.register_tool.call_count, 6)
         ctx.register_hook.assert_any_call("pre_llm_call", tools.pre_llm_call)
-        self.assertEqual(ctx.register_hook.call_count, 4)
+        self.assertEqual(ctx.register_hook.call_count, 5)
 
         info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
         self.assertEqual(info["host"], "127.0.0.1")

@@ -22,9 +22,10 @@ SURFACES = (
     "cards",
     "web",
     "image",
-    "custom",
+    "artifact",
 )
 LEVELS = ("info", "success", "error")
+MAX_ARTIFACT_BYTES = 256 * 1024
 
 
 def _non_empty_str(val: Any) -> bool:
@@ -77,9 +78,15 @@ def _validate_surface_data(surface: str, data: dict[str, Any]) -> str | None:
             return "image requiere data.src o data.url (string no vacío)"
         if not _opt_str(data.get("alt")):
             return "image alt debe ser un string"
-    elif surface == "custom":
-        if not _non_empty_str(data.get("html")):
-            return "custom requiere data.html (string no vacío)"
+    elif surface == "artifact":
+        if data.get("kind") not in ("html", "svg"):
+            return "artifact requiere data.kind ('html' o 'svg')"
+        content = data.get("content")
+        if not _non_empty_str(content):
+            return "artifact requiere data.content (string no vacío)"
+        if len(str(content).encode("utf-8")) > MAX_ARTIFACT_BYTES:
+            return (f"artifact content supera el máximo de {MAX_ARTIFACT_BYTES // 1024} KB; "
+                    "reduci el gráfico o dividilo en varias superficies")
     return None
 
 
