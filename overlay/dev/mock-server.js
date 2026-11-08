@@ -147,7 +147,9 @@ function sendSampleSequence(ws) {
     [16000, { type: 'render', surface: 'artifact', id: 'artifact-demo1', data: { kind: 'html', title: 'Energía por sala', content: SAMPLE_ARTIFACT_HTML } }],
     [18000, { type: 'render', surface: 'email_list', id: 'email_list-1', data: { title: 'Últimos correos (actualizada)', items: SAMPLE_EMAILS_UPDATED } }],
     [20000, { type: 'close', id: 'table-1' }],
-    [22000, { type: 'mode', autopilot: false }],
+    // Igual que autopilot(off) en el plugin: primero limpia la pantalla, después la salida.
+    [22000, { type: 'close', id: 'all' }],
+    [22200, { type: 'mode', autopilot: false }],
   ];
   for (const [delay, msg] of steps) {
     setTimeout(() => {

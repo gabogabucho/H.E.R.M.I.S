@@ -86,6 +86,16 @@ class SkeletonTest(unittest.TestCase):
         self.assertFalse(json.loads(tools.close_surface(None))["ok"])  # type: ignore[arg-type]
         self.assertFalse(json.loads(tools.close_surface({"id": "  "}))["ok"])
 
+    def test_autopilot_off_clears_the_overlay(self) -> None:
+        sent: list[dict] = []
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]):
+            tools.autopilot({"state": "on"})
+            tools.render_surface({"surface": "document", "id": "doc", "data": {"title": "x"}})
+            sent.clear()
+            tools.autopilot({"state": "off"})
+        self.assertEqual(sent, [{"type": "close", "id": "all"}, {"type": "mode", "autopilot": False}])
+        self.assertEqual(ws_server.load_state().get("surfaces"), {})
+
     def test_day2_autopilot_surfaces_and_pre_llm_call(self) -> None:
         # Sin estado inicial, pre_llm_call no inyecta nada
         self.assertIsNone(tools.pre_llm_call())
@@ -387,6 +397,8 @@ class SkeletonTest(unittest.TestCase):
                 ap_off = json.loads(tools.autopilot({"state": "off"}))
                 self.assertTrue(ap_off["ok"])
                 self.assertEqual(ap_off["delivered"], 1)
+                close_all = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(close_all, {"type": "close", "id": "all"})
                 mode_off = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(mode_off, {"type": "mode", "autopilot": False})
 

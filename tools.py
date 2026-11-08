@@ -136,6 +136,10 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         st.pop("windows", None)
     ws_server.save_state(st)
     orb_lifecycle.reset()
+    if not active:
+        # Salir del modo limpia la pantalla: el estado ya quedó vacío y el
+        # overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
+        _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     if active:
         launch_note = _maybe_start_overlay(delivered)
