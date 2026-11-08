@@ -304,7 +304,8 @@ class SkeletonTest(unittest.TestCase):
         ctx = MagicMock(plugin_data_dir=self.tmp)
         hermis.register(ctx)
         self.assertEqual(ctx.register_tool.call_count, 6)
-        ctx.register_hook.assert_called_once_with("pre_llm_call", tools.pre_llm_call)
+        ctx.register_hook.assert_any_call("pre_llm_call", tools.pre_llm_call)
+        self.assertEqual(ctx.register_hook.call_count, 4)
 
         info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
         self.assertEqual(info["host"], "127.0.0.1")

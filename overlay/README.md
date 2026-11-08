@@ -72,6 +72,21 @@ en Windows. Esto no reemplaza una prueba con Electron, micrófono y Gmail reales
 
 Los argumentos desconocidos o adicionales muestran la ayuda sin cambiar el modo.
 
+### Estados reales del agente
+
+Con piloto automático activo, los hooks del plugin envían `thinking` al iniciar
+un turno, `acting` mientras quedan herramientas en ejecución e `idle` al terminar
+el último turno. Los eventos se agrupan por sesión, tarea y turno; terminar una
+herramienta no oculta otra que sigue ejecutándose en el mismo proceso. Cambiar
+el modo limpia esta actividad transitoria sin modificar las superficies.
+
+Estos estados no representan actividad del micrófono ni reproducción de voz:
+`listening` y `speaking` siguen pendientes de una API de audio compatible. La
+intro existente no cambia. No se usan credenciales del Desktop ni sockets nuevos.
+El seguimiento es local al proceso: no agrega actividad de varios procesos de
+Hermes. Eventos sin identificadores de sesión/turno se ignoran, y si un proceso
+termina sin emitir el cierre del turno, se restablece al cambiar el modo.
+
 ### Conexión del overlay
 
 El overlay lee `%HERMES_HOME%\plugin-data\hermis\overlay.json` (o

@@ -12,6 +12,7 @@ from typing import Any
 from . import overlay_launcher
 from . import win32_windows
 from . import ws_server
+from . import orb_lifecycle
 
 SURFACES = (
     "notification",
@@ -127,6 +128,7 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         st["surfaces"] = {}
         st.pop("windows", None)
     ws_server.save_state(st)
+    orb_lifecycle.reset()
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     if active:
         launch_note = _maybe_start_overlay(delivered)
@@ -292,6 +294,7 @@ def launch_app(args: dict[str, Any], **kwargs: Any) -> str:
 
 def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
     """Inyecta instrucciones del Modo Piloto Automático y contexto de superficies y ventanas abiertas."""
+    orb_lifecycle.pre_llm_call(**kwargs)
     st = ws_server.load_state()
     autopilot_on = bool(st.get("autopilot", False))
     surfaces: dict[str, Any] = st.get("surfaces") or {}

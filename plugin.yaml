@@ -14,3 +14,6 @@ provides_tools:
   - launch_app
 provides_hooks:
   - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - post_llm_call

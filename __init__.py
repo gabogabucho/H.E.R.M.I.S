@@ -18,6 +18,7 @@ from . import schemas
 from . import tools
 from . import ws_server
 from . import commands
+from . import orb_lifecycle
 
 logger = logging.getLogger("hermis")
 
@@ -41,6 +42,9 @@ def register(ctx) -> None:
     ctx.register_tool(name="launch_app", toolset="hermis",
                       schema=schemas.LAUNCH_APP_SCHEMA, handler=tools.launch_app)
     ctx.register_hook("pre_llm_call", tools.pre_llm_call)
+    ctx.register_hook("pre_tool_call", orb_lifecycle.pre_tool_call)
+    ctx.register_hook("post_tool_call", orb_lifecycle.post_tool_call)
+    ctx.register_hook("post_llm_call", orb_lifecycle.post_llm_call)
     ctx.register_command(
         name="hermis", handler=commands.handle,
         description="Show H.E.R.M.I.S status, switch autopilot, or check installation.",

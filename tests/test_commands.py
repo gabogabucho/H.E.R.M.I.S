@@ -100,7 +100,10 @@ class CommandTest(unittest.TestCase):
         self.assertEqual({c.kwargs["name"] for c in ctx.register_tool.call_args_list}, {
             "autopilot", "render_surface", "close_surface", "list_surfaces", "layout_windows", "launch_app",
         })
-        ctx.register_hook.assert_called_once_with("pre_llm_call", hermis.tools.pre_llm_call)
+        ctx.register_hook.assert_any_call("pre_llm_call", hermis.tools.pre_llm_call)
+        self.assertEqual({c.args[0] for c in ctx.register_hook.call_args_list}, {
+            "pre_llm_call", "pre_tool_call", "post_tool_call", "post_llm_call",
+        })
         self.assertIsNotNone(ctx.register_command.call_args)
 
 
