@@ -52,6 +52,28 @@ Qué deberías ver, en orden:
 
 ## Con el plugin real
 
+### Control del modo con `/hermis`
+
+Con el plugin cargado, estos comandos funcionan dentro de la conversación:
+
+| Comando | Resultado |
+|---|---|
+| `/hermis` o `/hermis status` | Modo actual y cantidad de superficies persistidas, sin modificar el estado. |
+| `/hermis on` | Activa el modo mediante la misma herramienta `autopilot` y solicita abrir el overlay si hace falta. |
+| `/hermis off` | Desactiva el modo y limpia las superficies, igual que `autopilot off`. |
+| `/hermis check` | Diagnóstico local de solo lectura: plataforma, presencia de Node.js/npm y directorio de dependencias del overlay. |
+
+El diagnóstico no inicia procesos, no instala dependencias ni modifica la
+configuración global. Encontrar Node.js no valida su versión; se requiere 20+.
+El estado no prueba una conexión al overlay: la informa como no comprobada.
+Voz, wake word y computer use se informan como **no verificados**, no como
+pruebas exitosas. Verifica estos componentes en Hermes y ejecuta `hermes computer-use doctor`
+en Windows. Esto no reemplaza una prueba con Electron, micrófono y Gmail reales.
+
+Los argumentos desconocidos o adicionales muestran la ayuda sin cambiar el modo.
+
+### Conexión del overlay
+
 El overlay lee `%HERMES_HOME%\plugin-data\hermis\overlay.json` (o
 `~/.hermes/plugin-data/hermis/overlay.json` si no hay `HERMES_HOME`), que el
 plugin escribe al levantar su WS. El override manual es el mismo:

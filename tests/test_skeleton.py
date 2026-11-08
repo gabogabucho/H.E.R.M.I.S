@@ -594,7 +594,11 @@ class AutostartTest(unittest.TestCase):
         with patch.object(win32_windows, "is_windows", lambda: True), \
              patch.object(win32_windows.shutil, "which", lambda exe: f"C:\\Windows\\System32\\{exe}"), \
              patch.object(win32_windows.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k)) or fake_proc):
-            launched = json.loads(tools.launch_app({"app": "bloc de notas", "args": ["notas.txt"]}))
+            # Windows-only subprocess flags must also be mocked on Linux.
+            with patch.object(subprocess, "DETACHED_PROCESS", 0x8, create=True), \
+                 patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, create=True), \
+                 patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
+                launched = json.loads(tools.launch_app({"app": "bloc de notas", "args": ["notas.txt"]}))
             self.assertTrue(launched["ok"])
             self.assertEqual(launched["pid"], 4242)
             self.assertEqual(popen_calls[0][0][0], ["C:\\Windows\\System32\\notepad.exe", "notas.txt"])

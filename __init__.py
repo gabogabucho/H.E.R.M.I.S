@@ -17,6 +17,7 @@ import logging
 from . import schemas
 from . import tools
 from . import ws_server
+from . import commands
 
 logger = logging.getLogger("hermis")
 
@@ -40,3 +41,8 @@ def register(ctx) -> None:
     ctx.register_tool(name="launch_app", toolset="hermis",
                       schema=schemas.LAUNCH_APP_SCHEMA, handler=tools.launch_app)
     ctx.register_hook("pre_llm_call", tools.pre_llm_call)
+    ctx.register_command(
+        name="hermis", handler=commands.handle,
+        description="Show H.E.R.M.I.S status, switch autopilot, or check installation.",
+        args_hint="[status|on|off|check]",
+    )
