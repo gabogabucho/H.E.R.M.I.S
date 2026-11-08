@@ -3,7 +3,8 @@
 **Fecha límite: miércoles 11/11/2026, 17:00 EST (19:00 hora de Argentina).**
 Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atrasa, se recorta alcance, no se corre la entrega.
 
-> **Estado actual:** Propuesta aprobada (#5) · Día 0 completado ✅ · Día 1 (lado plugin Python) listo, a la espera del PR del overlay Electron.
+> **Estado actual (8/11):** Días 0, 1 y 2 completos ✅ · Día 3 hecho, falta probarlo con Hermes real · Día 4 a medias (orbe por hooks y `/hermis` listos; falta el WS del gateway y la demo completa).
+> Principio del 8/11: el plugin es una **interfaz, no una fuente de datos** (ver `BRIEF.md`).
 
 ---
 
@@ -41,10 +42,12 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 - [x] Tool `autopilot(on|off)` + estado persistente del modo
 - [x] Instrucciones del modo (`register_system_prompt_section` / `pre_llm_call`): respuestas cortas por voz, datos en superficies
-- [ ] **Morph**: barra → esfera al entrar, esfera → barra al salir
-- [x] Superficies `email_list`, `table`, `cards`, `web`, `image`, `custom` (aislada)
+- [x] **Morph**: barra → esfera al entrar, esfera → barra al salir (funciona; falta pulir la transformación)
+- [x] Superficies `email_list`, `table`, `cards`, `web`, `image` y `artifact` (reemplaza a `custom`)
 - [x] `close_surface` + `list_surfaces`, con estado persistente (`plugin_data_dir`)
-- [ ] Flujo Gmail con la skill `google-workspace`: "últimos 10 correos" → `email_list`
+- [x] Artefactos HTML/SVG de Hermes al overlay, automático vía `post_llm_call`
+- [x] Al conectar, el overlay recupera el modo y las superficies; el plugin abre el overlay solo
+- [ ] Probar con Hermes real: "últimos 10 correos" (Hermes usa su skill de Google) → `email_list`
 
 **Validación:** "Hey Hermes, modo piloto automático" → morph → "mostrame mis últimos 10 correos" → se dibuja la lista.
 
@@ -52,11 +55,11 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 3 · Dom 8/11 — Manejar el escritorio
 
-- [ ] Listar y enfocar ventanas delegando en `computer_use` (`ctx.dispatch_tool`)
-- [ ] `layout_windows` (dividir, maximizar, cuadrícula) con la API de Win32
-- [ ] `launch_app` (buscar y abrir apps)
-- [ ] Hook `pre_llm_call` con el contexto de pantalla desde un cache (superficies + ventanas)
-- [ ] "Abrí el de Juan" resuelve la referencia gracias al contexto
+- [x] Listar y enfocar ventanas (con Win32 propio en lugar de `computer_use`)
+- [x] `layout_windows` (dividir, maximizar, cuadrícula) con la API de Win32
+- [x] `launch_app` (buscar y abrir apps)
+- [x] Hook `pre_llm_call` con el contexto de pantalla desde un cache (superficies + ventanas)
+- [ ] "Abrí el de Juan" resuelve la referencia gracias al contexto (falta probar con Hermes real)
 
 **Validación:** "Excel de notas a la izquierda, trabajos a la derecha" → hecho.
 
@@ -65,9 +68,10 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 ## Día 4 · Lun 9/11 — El orbe vivo + demo completa
 
 - [ ] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → intro
-- [ ] Hooks `pre/post_tool_call` → actuando; turnos → pensando / hablando
-- [ ] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
-- [ ] `/hermis` como slash command: estado, activar/desactivar el modo y un chequeo de instalación (voz, wake word, computer use)
+- [x] Hooks `pre/post_tool_call` → actuando; turnos → pensando / hablando
+- [x] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
+- [ ] Pulir la animación de la transformación barra ↔ orbe
+- [x] `/hermis` como slash command: estado, activar/desactivar el modo y un chequeo de instalación (voz, wake word, computer use)
 - [ ] La demo completa corre de punta a punta al menos una vez
 - [ ] *(Opcional, si sobra tiempo)* primer acercamiento a Spotify
 

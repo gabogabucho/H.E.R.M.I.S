@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <!-- CSP propia del frame de artefactos: el srcdoc heredaría la CSP del
+       overlay (script-src 'self'), que bloquea los scripts inline de los
+       artefactos. Esta página se carga con src y escribe el HTML recibido
+       por postMessage con document.open()/write()/close(); la CSP se
+       mantiene en el documento escrito. Sin red (connect-src 'none'). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'">
+  <title>Artefacto</title>
+  <style>html, body { margin: 0; padding: 0; background: #fff; }</style>
+</head>
+<body>
+  <script>
+    'use strict';
+    window.addEventListener('message', function (e) {
+      var d = e.data;
+      if (!d || d.type !== 'hermis-artifact' || typeof d.content !== 'string' || !d.content) return;
+      document.open();
+      document.write(d.content);
+      document.close();
+    });
+  </script>
+</body>
+</html>

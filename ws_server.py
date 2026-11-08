@@ -6,9 +6,10 @@ una sola sesión. El overlay lee ``overlay.json`` (puerto + token, dentro del
 como primer mensaje: sin hello válido se cierra la conexión (4401). Todo
 queda en loopback — nada escucha en interfaces externas.
 
-Estado Día 1: solo ``broadcast`` (plugin → overlay). Los mensajes posteriores
-del overlay se ignoran; Día 2+ agrega ``close_surface``/``list_surfaces`` y
-estado persistente.
+Estado Día 2: ``broadcast`` (plugin → overlay) y sincronización al conectar:
+cuando un overlay completa el ``hello``, recibe ``mode`` (estado de
+``state.json``) y un ``render`` por cada superficie activa, en orden. Los
+mensajes posteriores del overlay se ignoran.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import os
 import secrets
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -64,14 +66,35 @@ def _data_dir(override: Path | str | None = None) -> Path:
         return base / "plugin-data" / "hermis"
 
 
+def data_dir() -> Path:
+    """Directorio de estado efectivo del plugin (respeta el override de start())."""
+    return _data_dir(_STATE["data_dir_override"])
+
+
+def _atomic_write_text(target: Path, content: str) -> None:
+    """Escritura atómica tolerante a bloqueos transitorios de lectura en Windows ([WinError 5])."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    for attempt in range(5):
+        try:
+            os.replace(tmp, target)
+            return
+        except PermissionError:
+            if attempt < 4:
+                time.sleep(0.02)
+    try:
+        target.write_text(content, encoding="utf-8")
+    finally:
+        with contextlib.suppress( OSError):
+            tmp.unlink(missing_ok=True)
+
+
 def _write_overlay_info(port: int, token: str, data_dir: Path | str | None = None) -> None:
     """Puerto y token de la sesión, escritura atómica; el overlay lee esto."""
     info = {"host": _HOST, "port": port, "token": token, "pid": os.getpid()}
     target = _data_dir(data_dir) / "overlay.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"overlay.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(info), encoding="utf-8")
-    os.replace(tmp, target)
+    _atomic_write_text(target, json.dumps(info))
     logger.info("overlay.json listo (puerto %s)", port)
 
 
@@ -82,11 +105,14 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
         try:
             raw = json.loads(target.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                return {
+                out: dict[str, Any] = {
                     "autopilot": bool(raw.get("autopilot", False)),
                     "seq": int(raw.get("seq", 0)),
                     "surfaces": dict(raw.get("surfaces") or {}) if isinstance(raw.get("surfaces"), dict) else {},
                 }
+                if isinstance(raw.get("windows"), list):
+                    out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
+                return out
         except Exception:
             pass
         return {"autopilot": False, "seq": 0, "surfaces": {}}
@@ -96,10 +122,7 @@ def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> Non
     """Persiste state.json de forma atómica en plugin_data_dir."""
     target = _data_dir(data_dir if data_dir is not None else _STATE["data_dir_override"]) / "state.json"
     with _lock:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(f"state.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, target)
+        _atomic_write_text(target, json.dumps(state, ensure_ascii=False))
 
 
 async def _handler(conn: Any) -> None:
@@ -133,6 +156,19 @@ async def _handler(conn: Any) -> None:
                     _send_all(json.dumps(msg["payload"], ensure_ascii=False))
                 await conn.send(json.dumps({"delivered": count}))
         return
+    # Sincronización al conectar: el overlay recupera el estado actual (mode +
+    # un render por superficie persistida, en orden) antes de pasar al stream.
+    st = load_state()
+    await _safe_send(conn, json.dumps({"type": "mode", "autopilot": bool(st.get("autopilot", False))}))
+    for entry in (st.get("surfaces") or {}).values():
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+            continue
+        await _safe_send(conn, json.dumps({
+            "type": "render",
+            "surface": entry.get("surface"),
+            "id": entry.get("id"),
+            "data": entry.get("data"),
+        }, ensure_ascii=False))
     with _lock:
         _clients.add(conn)
     try:
@@ -241,8 +277,14 @@ def start(data_dir: Path | str | None = None) -> None:
                        _STARTUP_TIMEOUT_S)
 
 
-def _relay_to_overlay_server(obj: dict[str, Any]) -> int:
-    """Si otro proceso de Hermes es dueño de overlay.json, publica vía WS local."""
+def _relay_to_overlay_server(obj: dict[str, Any]) -> int | None:
+    """Si otro proceso de Hermes es dueño de overlay.json, publica vía WS local.
+
+    Devuelve la cantidad de entregas, o ``None`` si no se pudo conectar al
+    servidor dueño (conexión rechazada, timeout o handshake roto): señal para
+    que el llamador tome el relevo. Si el servidor vivo rechaza el token (o
+    cierra la sesión) devuelve 0: hay un dueño vivo, no hay relevo que tomar.
+    """
     try:
         info = json.loads((_data_dir(_STATE["data_dir_override"]) / "overlay.json").read_text(encoding="utf-8"))
         with _lock:
@@ -251,20 +293,30 @@ def _relay_to_overlay_server(obj: dict[str, Any]) -> int:
     except Exception:
         return 0
 
-    async def _publish() -> int:
-        from websockets.asyncio.client import connect
+    async def _publish() -> int | None:
+        try:
+            from websockets.asyncio.client import connect
+            from websockets.exceptions import ConnectionClosed
 
-        uri = f"ws://{info['host']}:{info['port']}"
-        async with connect(uri, open_timeout=1.0, close_timeout=0.5) as conn:
-            await conn.send(json.dumps({"type": "hello", "token": info["token"], "role": "publisher"}))
-            ack = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
-            if not isinstance(ack, dict) or ack.get("type") != "hello_ok":
+            uri = f"ws://{info['host']}:{info['port']}"
+            async with connect(uri, open_timeout=1.0, close_timeout=0.5) as conn:
+                await conn.send(json.dumps({"type": "hello", "token": info["token"], "role": "publisher"}))
+                ack = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
+                if not isinstance(ack, dict) or ack.get("type") != "hello_ok":
+                    return 0
+                await conn.send(json.dumps({"type": "broadcast", "payload": obj}, ensure_ascii=False))
+                res = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
+                return int(res.get("delivered", 0)) if isinstance(res, dict) else 0
+        except Exception as exc:
+            # El servidor responde y cierra la sesión (token inválido u otro
+            # rechazo): hay un dueño vivo, no hay relevo que tomar.
+            from websockets.exceptions import ConnectionClosed
+
+            if isinstance(exc, ConnectionClosed):
                 return 0
-            await conn.send(json.dumps({"type": "broadcast", "payload": obj}, ensure_ascii=False))
-            res = json.loads(await asyncio.wait_for(conn.recv(), timeout=1.0))
-            return int(res.get("delivered", 0)) if isinstance(res, dict) else 0
+            return None
 
-    out = [0]
+    out: list[int | None] = [None]
 
     def _runner() -> None:
         coro = _publish()
@@ -283,13 +335,43 @@ def broadcast(obj: dict[str, Any]) -> int:
     """Manda un mensaje a todos los overlays conectados (thread-safe).
 
     Devuelve la cantidad de clientes a los que se les encoló el envío.
+    Si el dueño de overlay.json no responde (proceso caído), este proceso
+    toma el relevo: levanta su propio servidor, reescribe overlay.json y
+    devuelve 0 entregas (el overlay se reconecta solo y recupera el estado).
     """
     with _lock:
         loop, count = _STATE["loop"], len(_clients)
     if loop is not None and count > 0:
         loop.call_soon_threadsafe(_send_all, json.dumps(obj, ensure_ascii=False))
         return count
-    return _relay_to_overlay_server(obj)
+    delivered = _relay_to_overlay_server(obj)
+    if delivered is None:
+        _take_over_overlay_server()
+        return 0
+    return delivered
+
+
+def _take_over_overlay_server() -> None:
+    """El dueño de overlay.json no responde: levanta/anuncia nuestro servidor."""
+    try:
+        start()
+    except Exception as exc:
+        logger.warning("no se pudo tomar el relevo del WS del overlay: %s", exc)
+        return
+    with _lock:
+        loop, port, token = _STATE["loop"], _STATE["port"], _STATE["token"]
+    if loop is None or port is None or token is None:
+        return
+    try:
+        info = json.loads((_data_dir(_STATE["data_dir_override"]) / "overlay.json").read_text(encoding="utf-8"))
+        if (info.get("pid") == os.getpid() and info.get("port") == port
+                and info.get("token") == token):
+            return
+    except Exception:
+        pass
+    if _probe_existing_server(_STATE["data_dir_override"]):
+        return  # un dueño válido está vivo: no lo tapamos
+    _write_overlay_info(port, token, _STATE["data_dir_override"])
 
 
 def _send_all(text: str) -> None:

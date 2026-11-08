@@ -9,7 +9,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from . import overlay_launcher
+from . import win32_windows
 from . import ws_server
+from . import orb_lifecycle
 
 SURFACES = (
     "notification",
@@ -19,9 +22,10 @@ SURFACES = (
     "cards",
     "web",
     "image",
-    "custom",
+    "artifact",
 )
 LEVELS = ("info", "success", "error")
+MAX_ARTIFACT_BYTES = 256 * 1024
 
 
 def _non_empty_str(val: Any) -> bool:
@@ -74,9 +78,15 @@ def _validate_surface_data(surface: str, data: dict[str, Any]) -> str | None:
             return "image requiere data.src o data.url (string no vacío)"
         if not _opt_str(data.get("alt")):
             return "image alt debe ser un string"
-    elif surface == "custom":
-        if not _non_empty_str(data.get("html")):
-            return "custom requiere data.html (string no vacío)"
+    elif surface == "artifact":
+        if data.get("kind") not in ("html", "svg"):
+            return "artifact requiere data.kind ('html' o 'svg')"
+        content = data.get("content")
+        if not _non_empty_str(content):
+            return "artifact requiere data.content (string no vacío)"
+        if len(str(content).encode("utf-8")) > MAX_ARTIFACT_BYTES:
+            return (f"artifact content supera el máximo de {MAX_ARTIFACT_BYTES // 1024} KB; "
+                    "reduci el gráfico o dividilo en varias superficies")
     return None
 
 
@@ -89,6 +99,26 @@ def _safe_broadcast(payload: dict[str, Any]) -> tuple[int, str | None]:
         return 0, f"broadcast falló: {exc}"
 
 
+def _maybe_start_overlay(delivered: int) -> str | None:
+    """Sin overlay conectado, intenta abrirlo (una vez por cooldown)."""
+    if delivered > 0:
+        return None
+    try:
+        return overlay_launcher.ensure_overlay_running()
+    except Exception as exc:
+        return f"no se pudo abrir el overlay: {exc}"
+
+
+def _refresh_windows_cache(st: dict[str, Any]) -> None:
+    """Actualiza el listado de ventanas visibles en el diccionario de estado."""
+    try:
+        titles = [w["title"] for w in win32_windows.list_open_windows()[:15] if isinstance(w.get("title"), str)]
+        if titles:
+            st["windows"] = titles
+    except Exception:
+        pass
+
+
 def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     """Activa o desactiva el Modo Piloto Automático y persiste el estado."""
     if not isinstance(args, dict):
@@ -99,10 +129,22 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     active = state == "on"
     st = ws_server.load_state()
     st["autopilot"] = active
-    if not active:
+    if active:
+        _refresh_windows_cache(st)
+    else:
         st["surfaces"] = {}
+        st.pop("windows", None)
     ws_server.save_state(st)
+    orb_lifecycle.reset()
+    if not active:
+        # Salir del modo limpia la pantalla: el estado ya quedó vacío y el
+        # overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
+        _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
+    if active:
+        launch_note = _maybe_start_overlay(delivered)
+        if launch_note:
+            note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "state": state,
@@ -139,8 +181,16 @@ def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
         if isinstance(raw_id, str):
             surface_id = raw_id.strip()
         else:
-            st["seq"] = int(st.get("seq", 0)) + 1
-            surface_id = f"{surface}-{st['seq']}"
+            existing_id = next(
+                (sid for sid, entry in (st.get("surfaces") or {}).items()
+                 if isinstance(entry, dict) and entry.get("surface") == surface and entry.get("data") == data),
+                None,
+            )
+            if existing_id is not None:
+                surface_id = existing_id
+            else:
+                st["seq"] = int(st.get("seq", 0)) + 1
+                surface_id = f"{surface}-{st['seq']}"
         st.setdefault("surfaces", {})[surface_id] = {
             "id": surface_id,
             "surface": surface,
@@ -150,6 +200,9 @@ def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
         msg["id"] = surface_id
 
     delivered, note = _safe_broadcast(msg)
+    launch_note = _maybe_start_overlay(delivered)
+    if launch_note:
+        note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "id": surface_id,
@@ -179,6 +232,9 @@ def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
         st["surfaces"] = surfaces
     ws_server.save_state(st)
     delivered, note = _safe_broadcast({"type": "close", "id": target_id})
+    launch_note = _maybe_start_overlay(delivered)
+    if launch_note:
+        note = launch_note
     out: dict[str, Any] = {
         "ok": True,
         "id": target_id,
@@ -201,20 +257,79 @@ def list_surfaces(args: dict[str, Any] | None = None, **kwargs: Any) -> str:
     })
 
 
+def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
+    """Acomoda, enfoca o maximiza ventanas reales del escritorio de Windows."""
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args", "message": "args debe ser un objeto"})
+    layout = args.get("layout")
+    windows = args.get("windows")
+    if layout not in win32_windows.LAYOUTS:
+        return _json({
+            "ok": False,
+            "error": "invalid_layout",
+            "message": f"layout debe ser uno de: {', '.join(win32_windows.LAYOUTS)}",
+        })
+    if not isinstance(windows, list) or not windows or not all(_non_empty_str(w) for w in windows):
+        return _json({
+            "ok": False,
+            "error": "invalid_windows",
+            "message": "windows debe ser una lista no vacía de nombres o títulos de ventana",
+        })
+    queries = [str(w).strip() for w in windows]
+    res = win32_windows.apply_layout(layout, queries)
+    st = ws_server.load_state()
+    _refresh_windows_cache(st)
+    ws_server.save_state(st)
+    return _json(res)
+
+
+def launch_app(args: dict[str, Any], **kwargs: Any) -> str:
+    """Abre una aplicación de escritorio por nombre o alias sin usar shell."""
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args", "message": "args debe ser un objeto"})
+    app = args.get("app")
+    if not _non_empty_str(app):
+        return _json({"ok": False, "error": "invalid_app", "message": "app debe ser un string no vacío"})
+    raw_args = args.get("args")
+    if raw_args is not None and (not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args)):
+        return _json({"ok": False, "error": "invalid_args_list", "message": "args debe ser una lista de strings"})
+    res = win32_windows.launch_application(str(app).strip(), raw_args)
+    st = ws_server.load_state()
+    _refresh_windows_cache(st)
+    ws_server.save_state(st)
+    return _json(res)
+
+
 def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
-    """Inyecta instrucciones del Modo Piloto Automático y contexto de superficies abiertas."""
+    """Inyecta instrucciones del Modo Piloto Automático y contexto de superficies y ventanas abiertas."""
+    orb_lifecycle.pre_llm_call(**kwargs)
     st = ws_server.load_state()
     autopilot_on = bool(st.get("autopilot", False))
     surfaces: dict[str, Any] = st.get("surfaces") or {}
+    windows: list[str] = st.get("windows") if isinstance(st.get("windows"), list) else []
     if not autopilot_on and not surfaces:
         return None
 
     lines: list[str] = []
     if autopilot_on:
         lines.append(
-            "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO]\n"
-            "- Respondé en 1–2 frases cortas para ser habladas por voz (no leas listas ni markdown en voz alta).\n"
-            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) mostralo con `render_surface`."
+            "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO / Autopilot Mode ACTIVE]\n"
+            "- Idioma / Language: responde siempre en el mismo idioma que use el usuario "
+            "(si es español, usa español neutro sin modismos regionales ni voseo; if English or another language, reply in that language).\n"
+            "- Voz / Voice: responde en 1 o 2 frases cortas pensadas para ser habladas; no leas listas ni markdown en voz alta.\n"
+            "- Mostrar / Show: todo lo que el usuario pida VER se muestra con `render_surface`, eligiendo la superficie "
+            "por el TIPO de dato, sin importar de dónde viene: mensajes o correos → email_list; filas y columnas → table; "
+            "ítems → cards; texto largo → document; una página web → web; una imagen → image; un aviso corto → notification.\n"
+            "- Artefactos / Artifacts: si necesitas un gráfico, un diagrama o un dashboard, escribe un bloque ```html o ```svg "
+            "como ya sabes hacer y aparecerá solo en pantalla; también puedes mandarlo directo con `render_surface` "
+            "surface='artifact' (data={kind: 'html'|'svg', title, content}).\n"
+            "- Contexto / Context: pedidos como 'abre el tercero' o 'cierra eso' se resuelven con lo que ya está en pantalla "
+            "(listado abajo) y con `close_surface`, sin volver a consultar nada.\n"
+            "- Ventanas / Windows: `layout_windows` acomoda, enfoca o maximiza ventanas reales del escritorio y `launch_app` "
+            "abre aplicaciones; para operar por dentro de una app, usa tus propias herramientas.\n"
+            "- Transparencia y tema / Opacity & theme: si el usuario pide subir/bajar la transparencia (opacidad) del fondo o cambiar entre modo claro y oscuro, "
+            "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'} "
+            "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."
         )
     if surfaces:
         lines.append("[Superficies abiertas en pantalla]")
@@ -231,6 +346,10 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
                         subj = item.get("subject", "")
                         body = item.get("body_markdown") or item.get("snippet") or ""
                         lines.append(f"  #{idx} de={sender!r} asunto={subj!r} texto={str(body)[:200]!r}")
+    if windows:
+        lines.append("[Ventanas del escritorio en caché]")
+        for wtitle in windows[:15]:
+            lines.append(f"- {wtitle}")
     return {"context": "\n".join(lines)}
 
 

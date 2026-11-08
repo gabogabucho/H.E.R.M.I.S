@@ -179,6 +179,27 @@ function watchOverlayFile() {
   }
 }
 
+function watchRendererFiles() {
+  let reloadTimer = null;
+  try {
+    fs.watch(path.join(__dirname, 'renderer'), () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        if (!win || win.isDestroyed()) return;
+        win.webContents.once('did-finish-load', () => {
+          if (sock) {
+            backoffMs = CONNECT_BACKOFF_MS;
+            sock.terminate();
+          }
+        });
+        win.webContents.reloadIgnoringCache();
+      }, 250);
+    });
+  } catch (e) {
+    // opcional
+  }
+}
+
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
   win = new BrowserWindow({
@@ -216,8 +237,9 @@ function createWindow() {
   win.webContents.on('console-message', (event) => {
     console.log('[renderer]', event.message);
   });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  const ready = win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.showInactive();
+  return ready;
 }
 
 ipcMain.on('hermis:interactive', (_e, interactive) => {
@@ -226,12 +248,21 @@ ipcMain.on('hermis:interactive', (_e, interactive) => {
   }
 });
 
+// La validación vive en main: el renderer nunca decide qué se abre afuera.
+ipcMain.handle('hermis:open-external', (_e, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    return shell.openExternal(url);
+  }
+  console.warn('[overlay] open-external rechazado (solo http/https):', typeof url);
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.whenReady().then(() => {
-    createWindow();
+  app.whenReady().then(async () => {
+    await createWindow();
     watchOverlayFile();
+    watchRendererFiles();
     connect();
   });
   app.on('window-all-closed', () => app.quit());

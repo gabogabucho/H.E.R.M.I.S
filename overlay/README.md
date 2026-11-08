@@ -52,6 +52,43 @@ Qué deberías ver, en orden:
 
 ## Con el plugin real
 
+### Control del modo con `/hermis`
+
+Con el plugin cargado, estos comandos funcionan dentro de la conversación:
+
+| Comando | Resultado |
+|---|---|
+| `/hermis` o `/hermis status` | Modo actual y cantidad de superficies persistidas, sin modificar el estado. |
+| `/hermis on` | Activa el modo mediante la misma herramienta `autopilot` y solicita abrir el overlay si hace falta. |
+| `/hermis off` | Desactiva el modo y limpia las superficies, igual que `autopilot off`. |
+| `/hermis check` | Diagnóstico local de solo lectura: plataforma, presencia de Node.js/npm y directorio de dependencias del overlay. |
+
+El diagnóstico no inicia procesos, no instala dependencias ni modifica la
+configuración global. Encontrar Node.js no valida su versión; se requiere 20+.
+El estado no prueba una conexión al overlay: la informa como no comprobada.
+Voz, wake word y computer use se informan como **no verificados**, no como
+pruebas exitosas. Verifica estos componentes en Hermes y ejecuta `hermes computer-use doctor`
+en Windows. Esto no reemplaza una prueba con Electron, micrófono y Gmail reales.
+
+Los argumentos desconocidos o adicionales muestran la ayuda sin cambiar el modo.
+
+### Estados reales del agente
+
+Con piloto automático activo, los hooks del plugin envían `thinking` al iniciar
+un turno, `acting` mientras quedan herramientas en ejecución e `idle` al terminar
+el último turno. Los eventos se agrupan por sesión, tarea y turno; terminar una
+herramienta no oculta otra que sigue ejecutándose en el mismo proceso. Cambiar
+el modo limpia esta actividad transitoria sin modificar las superficies.
+
+Estos estados no representan actividad del micrófono ni reproducción de voz:
+`listening` y `speaking` siguen pendientes de una API de audio compatible. La
+intro existente no cambia. No se usan credenciales del Desktop ni sockets nuevos.
+El seguimiento es local al proceso: no agrega actividad de varios procesos de
+Hermes. Eventos sin identificadores de sesión/turno se ignoran, y si un proceso
+termina sin emitir el cierre del turno, se restablece al cambiar el modo.
+
+### Conexión del overlay
+
 El overlay lee `%HERMES_HOME%\plugin-data\hermis\overlay.json` (o
 `~/.hermes/plugin-data/hermis/overlay.json` si no hay `HERMES_HOME`), que el
 plugin escribe al levantar su WS. El override manual es el mismo:

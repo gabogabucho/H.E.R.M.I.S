@@ -17,6 +17,9 @@ import logging
 from . import schemas
 from . import tools
 from . import ws_server
+from . import commands
+from . import orb_lifecycle
+from . import artifact_bridge
 
 logger = logging.getLogger("hermis")
 
@@ -35,4 +38,19 @@ def register(ctx) -> None:
                       schema=schemas.CLOSE_SURFACE_SCHEMA, handler=tools.close_surface)
     ctx.register_tool(name="list_surfaces", toolset="hermis",
                       schema=schemas.LIST_SURFACES_SCHEMA, handler=tools.list_surfaces)
+    ctx.register_tool(name="layout_windows", toolset="hermis",
+                      schema=schemas.LAYOUT_WINDOWS_SCHEMA, handler=tools.layout_windows)
+    ctx.register_tool(name="launch_app", toolset="hermis",
+                      schema=schemas.LAUNCH_APP_SCHEMA, handler=tools.launch_app)
     ctx.register_hook("pre_llm_call", tools.pre_llm_call)
+    ctx.register_hook("pre_tool_call", orb_lifecycle.pre_tool_call)
+    ctx.register_hook("post_tool_call", orb_lifecycle.post_tool_call)
+    # Hermes invoca todos los callbacks registrados por tipo (lista), así que
+    # el puente de artefactos y el orbe conviven como dos post_llm_call.
+    ctx.register_hook("post_llm_call", artifact_bridge.post_llm_call)
+    ctx.register_hook("post_llm_call", orb_lifecycle.post_llm_call)
+    ctx.register_command(
+        name="hermis", handler=commands.handle,
+        description="Show H.E.R.M.I.S status, switch autopilot, or check installation.",
+        args_hint="[status|on|off|check]",
+    )
