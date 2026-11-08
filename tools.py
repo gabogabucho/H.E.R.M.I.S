@@ -265,10 +265,7 @@ def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
             "message": "windows debe ser una lista no vacía de nombres o títulos de ventana",
         })
     queries = [str(w).strip() for w in windows]
-    type_text = args.get("type_text")
-    if type_text is not None and not isinstance(type_text, str):
-        return _json({"ok": False, "error": "invalid_type_text", "message": "type_text debe ser un string"})
-    res = win32_windows.apply_layout(layout, queries, type_text=type_text)
+    res = win32_windows.apply_layout(layout, queries)
     st = ws_server.load_state()
     _refresh_windows_cache(st)
     ws_server.save_state(st)
@@ -308,16 +305,19 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
             "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO / Autopilot Mode ACTIVE]\n"
             "- Idioma / Language: responde siempre en el mismo idioma que use el usuario "
             "(si es español, usa español neutro sin modismos regionales ni voseo; if English or another language, reply in that language).\n"
-            "- Responde en 1–2 frases cortas para ser habladas por voz (no leas listas ni markdown en voz alta).\n"
-            "- Todo contenido visual (correos, documentos, tablas, tarjetas, web, imágenes) muéstralo con `render_surface`.\n"
-            "- Correo / Email: lee Gmail con la skill `google-workspace` (o por IMAP SSL en `imap.gmail.com:993` con Python `imaplib` "
-            "usando `EMAIL_ADDRESS` y `EMAIL_PASSWORD` del `.env` de Hermes si `google-workspace` no tiene token) y muestra el resultado con `render_surface` "
-            "surface=email_list (items con id, from, subject, snippet, date y body_markdown si lo hay); "
-            "'abre el de Juan' / 'abre el tercero' / 'open the third one' se resuelven con lo que ya figura en pantalla, sin volver a consultar.\n"
-            "- Ventanas y apps reales / Real desktop windows & apps: usa `layout_windows` (split, grid, maximize, focus, minimize_others) "
-            "para acomodar o enfocar ventanas reales del escritorio y `launch_app` para abrir aplicaciones.\n"
+            "- Voz / Voice: responde en 1 o 2 frases cortas pensadas para ser habladas; no leas listas ni markdown en voz alta.\n"
+            "- Mostrar / Show: todo lo que el usuario pida VER se muestra con `render_surface`, eligiendo la superficie "
+            "por el TIPO de dato, sin importar de dónde viene: mensajes o correos → email_list; filas y columnas → table; "
+            "ítems → cards; texto largo → document; una página web → web; una imagen → image; un aviso corto → notification.\n"
+            "- Artefactos / Artifacts: si necesitas un gráfico, un diagrama o un dashboard, escribe un bloque ```html o ```svg "
+            "como ya sabes hacer y aparecerá solo en pantalla; también puedes mandarlo directo con `render_surface` "
+            "surface='artifact' (data={kind: 'html'|'svg', title, content}).\n"
+            "- Contexto / Context: pedidos como 'abre el tercero' o 'cierra eso' se resuelven con lo que ya está en pantalla "
+            "(listado abajo) y con `close_surface`, sin volver a consultar nada.\n"
+            "- Ventanas / Windows: `layout_windows` acomoda, enfoca o maximiza ventanas reales del escritorio y `launch_app` "
+            "abre aplicaciones; para operar por dentro de una app, usa tus propias herramientas.\n"
             "- Transparencia y tema / Opacity & theme: si el usuario pide subir/bajar la transparencia (opacidad) del fondo o cambiar entre modo claro y oscuro, "
-            "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'}` "
+            "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'} "
             "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."
         )
     if surfaces:

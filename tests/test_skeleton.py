@@ -128,10 +128,14 @@ class SkeletonTest(unittest.TestCase):
         self.assertIsInstance(hook_res, dict)
         ctx_text = hook_res["context"]  # type: ignore[index]
         self.assertIn("Modo Piloto Automático ACTIVO", ctx_text)
-        self.assertIn("google-workspace", ctx_text)
-        self.assertIn("surface=email_list", ctx_text)
+        self.assertIn("render_surface", ctx_text)
+        self.assertIn("email_list", ctx_text)
+        self.assertIn("artifact", ctx_text)
         self.assertIn("Juan Pérez", ctx_text)
         self.assertIn("Hola, adjunto el TP final.", ctx_text)
+        # El modo enseña la interfaz, nunca fuentes de datos ni skills
+        for forbidden in ("google-workspace", "Gmail", "IMAP", "EMAIL_ADDRESS", "EMAIL_PASSWORD", ".env", "type_in_window"):
+            self.assertNotIn(forbidden, ctx_text)
 
         # Cerrar una superficie puntual y luego todas
         closed_one = json.loads(tools.close_surface({"id": "inbox"}))

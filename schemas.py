@@ -119,10 +119,6 @@ LAYOUT_WINDOWS_SCHEMA = _schema(
             "items": {"type": "string"},
             "description": "Window title or app name substrings in the desired order (e.g. ['Excel', 'Chrome']).",
         },
-        "type_text": {
-            "type": "string",
-            "description": "Optional text to type into the first matched window after focusing/arranging it.",
-        },
     },
     required=["layout", "windows"],
 )
