@@ -4,7 +4,7 @@
  * <lumen-window> y notificaciones. Sin sesión ni WS propio (viven en el main
  * de Electron) ni apps de Lumen. El adaptador traduce x-lumen-desktop v2:
  * morph de modo (Día 2) y componentes de superficie (email_list, table,
- * cards, image, web, custom).
+ * cards, image, web, artifact).
  */
 
 'use strict';
@@ -22,6 +22,9 @@ const BAR_HINT = 'Pregúntale algo a Hermes…';
 const WINDOW_MARGIN = 20;
 const WINDOW_WIDTH = 480;
 const WINDOW_HEIGHT = 320;
+// Un gráfico necesita espacio: la superficie artifact es más grande.
+const ARTIFACT_WIDTH = 720;
+const ARTIFACT_HEIGHT = 520;
 const NOTIF_LIFETIME_MS = 4000;
 const NOTIF_LEVELS = ['info', 'success', 'error'];
 
@@ -283,6 +286,13 @@ class LumenWindow extends HTMLElement {
     this.style.top = `${y}px`;
   }
 
+  setSize(width, height) {
+    this._width = width;
+    this._height = height;
+    this.style.width = `${width}px`;
+    this.style.height = `${height}px`;
+  }
+
   attributeChangedCallback(name, oldVal, newVal) {
     if (name === 'title' && oldVal !== newVal) {
       const el = this.querySelector('.window-title');
@@ -303,8 +313,8 @@ function escapeHtml(text) {
 // Único HTML permitido en el shell: markdown pasado por DOMPurify. El
 // markdown puede venir de correos de terceros: se prohíbe <style> y el
 // atributo style porque con la CSP 'unsafe-inline' un CSS inyectado podría
-// tapar la pantalla o dibujar UI falsa. (El HTML de la superficie custom
-// conserva estilos: vive dentro del iframe sandbox, sin scripts.)
+// tapar la pantalla o dibujar UI falsa. (El HTML de los artefactos conserva
+// estilos y scripts: vive en el iframe sandbox con CSP propia.)
 function markdownToHtml(md) {
   try {
     return DOMPurify.sanitize(marked.parse(String(md)), { FORBID_TAGS: ['style'], FORBID_ATTR: ['style'] });
@@ -529,15 +539,40 @@ function renderWeb(body, data) {
   return true;
 }
 
-// Salida de emergencia aislada: HTML saneado con DOMPurify dentro de un
-// <iframe sandbox=""> (sin allow-scripts, origen opaco) con srcdoc.
-function renderCustom(body, data) {
-  if (typeof data.html !== 'string' || !data.html) return false;
+// Artefacto HTML/SVG (lo mismo que Hermes ya genera en el chat), aislado
+// igual que Hermes Desktop: HTML en <iframe sandbox="allow-scripts"> (sin
+// allow-same-origin) cargando artifact-frame.html, que tiene su propia CSP
+// (el srcdoc heredaría la CSP del overlay y bloquearía los scripts inline).
+// El contenido viaja por postMessage y se escribe con document.write, así
+// la CSP del frame se mantiene. SVG: DOMPurify con el perfil SVG.
+function renderArtifact(body, data) {
+  if (!data || (data.kind !== 'html' && data.kind !== 'svg')) return false;
+  if (typeof data.content !== 'string' || !data.content) return false;
+  if (data.kind === 'svg') {
+    let clean;
+    try {
+      clean = DOMPurify.sanitize(data.content, { USE_PROFILES: { svg: true, svgFilters: true } });
+    } catch (e) {
+      console.warn('[shell] DOMPurify falló para el svg:', e.message);
+      return false;
+    }
+    if (!clean.trim()) return false;
+    const holder = document.createElement('div');
+    holder.className = 'artifact-svg';
+    holder.innerHTML = clean;
+    body.classList.add('artifact-body', 'artifact-svg-body');
+    body.appendChild(holder);
+    return true;
+  }
   const frame = document.createElement('iframe');
-  frame.className = 'surface-frame';
-  frame.setAttribute('sandbox', '');
-  frame.srcdoc = DOMPurify.sanitize(data.html);
-  body.classList.add('custom-body');
+  frame.className = 'surface-frame artifact-frame';
+  frame.setAttribute('sandbox', 'allow-scripts');
+  frame.addEventListener('load', () => {
+    // Origen opaco (sin allow-same-origin): targetOrigin '*' es lo único posible.
+    frame.contentWindow.postMessage({ type: 'hermis-artifact', kind: 'html', content: data.content }, '*');
+  });
+  frame.src = 'artifact-frame.html';
+  body.classList.add('artifact-body', 'artifact-html-body');
   body.appendChild(frame);
   return true;
 }
@@ -548,7 +583,7 @@ const SURFACE_RENDERERS = {
   cards: renderCards,
   image: renderImage,
   web: renderWeb,
-  custom: renderCustom,
+  artifact: renderArtifact,
 };
 
 const SURFACE_TITLES = {
@@ -557,7 +592,7 @@ const SURFACE_TITLES = {
   cards: 'Tarjetas',
   image: 'Imagen',
   web: 'Enlace',
-  custom: 'Contenido',
+  artifact: 'Artefacto',
 };
 
 // =============================================
@@ -694,6 +729,7 @@ class LumenShell extends HTMLElement {
 
   // Superficies del Día 2 con componente propio. Con el mismo id se
   // actualizan en el lugar; datos mal formados caen a la vista genérica.
+  // El artefacto es más grande: un gráfico necesita espacio.
   openSurface(id, surface, data) {
     if (this.windows.has(id)) {
       this.updateWindow(id, surface, data);
@@ -704,7 +740,8 @@ class LumenShell extends HTMLElement {
     winEl.setAttribute('title', data.title || SURFACE_TITLES[surface] || surface);
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
     const record = { el: winEl, kind: surface };
-    const pos = this._computePosition();
+    if (surface === 'artifact') winEl.setSize(ARTIFACT_WIDTH, ARTIFACT_HEIGHT);
+    const pos = this._computePosition(winEl._width, winEl._height);
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
     this._setWindowBody(record, surface, data);
@@ -879,23 +916,23 @@ class LumenShell extends HTMLElement {
     this._later(800, () => layer.classList.add('hidden'));
   }
 
-  _computePosition() {
+  _computePosition(width = WINDOW_WIDTH, height = WINDOW_HEIGHT) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const orbZone = { left: vw - ORB_SIZE - 120, top: vh - ORB_SIZE - 140, right: vw, bottom: vh };
     const candidates = [
       { x: WINDOW_MARGIN, y: WINDOW_MARGIN },
-      { x: vw - WINDOW_WIDTH - WINDOW_MARGIN, y: WINDOW_MARGIN },
-      { x: WINDOW_MARGIN, y: (vh - WINDOW_HEIGHT) / 2 },
-      { x: (vw - WINDOW_WIDTH) / 2, y: WINDOW_MARGIN },
-      { x: WINDOW_MARGIN, y: vh - WINDOW_HEIGHT - WINDOW_MARGIN - 40 },
-      { x: (vw - WINDOW_WIDTH) / 2, y: (vh - WINDOW_HEIGHT) / 2 },
+      { x: vw - width - WINDOW_MARGIN, y: WINDOW_MARGIN },
+      { x: WINDOW_MARGIN, y: (vh - height) / 2 },
+      { x: (vw - width) / 2, y: WINDOW_MARGIN },
+      { x: WINDOW_MARGIN, y: vh - height - WINDOW_MARGIN - 40 },
+      { x: (vw - width) / 2, y: (vh - height) / 2 },
     ];
     const existing = Array.from(this.windows.values()).map((r) => ({
       left: parseInt(r.el.style.left || 0, 10),
       top: parseInt(r.el.style.top || 0, 10),
-      right: parseInt(r.el.style.left || 0, 10) + WINDOW_WIDTH,
-      bottom: parseInt(r.el.style.top || 0, 10) + WINDOW_HEIGHT,
+      right: parseInt(r.el.style.left || 0, 10) + (r.el._width || WINDOW_WIDTH),
+      bottom: parseInt(r.el.style.top || 0, 10) + (r.el._height || WINDOW_HEIGHT),
     }));
     const overlaps = (rect, other) => !(
       rect.right < other.left + 40 ||
@@ -904,7 +941,7 @@ class LumenShell extends HTMLElement {
       rect.top > other.bottom - 40
     );
     for (const cand of candidates) {
-      const rect = { left: cand.x, top: cand.y, right: cand.x + WINDOW_WIDTH, bottom: cand.y + WINDOW_HEIGHT };
+      const rect = { left: cand.x, top: cand.y, right: cand.x + width, bottom: cand.y + height };
       if (overlaps(rect, orbZone)) continue;
       if (existing.some((er) => overlaps(rect, er))) continue;
       return cand;
