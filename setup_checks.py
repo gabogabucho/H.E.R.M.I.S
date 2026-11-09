@@ -111,8 +111,8 @@ def _check_tts(cfg: dict[str, Any] | None) -> dict[str, Any]:
         # En el Desktop "leer en voz alta" es una preferencia local (solo se copia de
         # voice.auto_tts la primera vez): sin el toggle, la charla de voz solo transcribe.
         return _item("tts", label, "info",
-                     "Si Hermes te contesta solo con texto: en el Desktop pasá el mouse sobre el micrófono y "
-                     "activá 'Read replies aloud'. voice.auto_tts solo cubre la terminal y la mensajería.",
+                     "Si Hermes te contesta solo con texto: en el Desktop activá el parlante (ver el paso 'En el "
+                     "Desktop'). voice.auto_tts solo cubre la terminal y la mensajería.",
                      "hermes config set voice.auto_tts true")
     if provider == "elevenlabs":
         if not _has_module("elevenlabs"):
@@ -147,11 +147,21 @@ def _check_computer_use(cfg: dict[str, Any] | None) -> dict[str, Any]:
                  f"elegí 'Always' o agregá esto a {hermes_home() / 'config.yaml'}.", snippet)
 
 
+def _desktop_toggles() -> dict[str, Any]:
+    """Paso fijo: el Desktop guarda estos dos toggles adentro de la app y el plugin no puede leerlos."""
+    return _item("desktop", "En el Desktop", "info",
+                 "Elegí 'This device' abajo en la barra lateral (en un gateway remoto el plugin no corre). "
+                 "Pasá el mouse sobre el micrófono: la oreja activa 'hey hermes' y el parlante lee las "
+                 "respuestas en voz alta. Sin el parlante, la charla de voz solo transcribe. "
+                 "Para hablar, usá el botón negro de la derecha (el micrófono es solo dictado).")
+
+
 def run_checks() -> list[dict[str, Any]]:
     """Todos los chequeos; un fallo inesperado en uno nunca rompe el resto."""
     cfg = _read_config()
     checks = (_check_overlay, lambda: _check_stt(cfg), lambda: _check_language(cfg),
-              lambda: _check_tts(cfg), lambda: _check_wake(cfg), lambda: _check_computer_use(cfg))
+              lambda: _check_tts(cfg), lambda: _check_wake(cfg), lambda: _check_computer_use(cfg),
+              _desktop_toggles)
     items = []
     for check in checks:
         try:

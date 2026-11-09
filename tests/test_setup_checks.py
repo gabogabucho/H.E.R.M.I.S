@@ -67,8 +67,13 @@ class SetupChecksTest(unittest.TestCase):
         # El Desktop guarda "leer en voz alta" localmente; la config solo no alcanza.
         items = self.run_with({"voice": {"auto_tts": False}, "tts": {"provider": "edge"}})
         self.assertEqual(items["tts"]["status"], "info")
-        self.assertIn("Read replies aloud", items["tts"]["detail"])
+        self.assertIn("activá el parlante", items["tts"]["detail"])
         self.assertIn("hermes config set voice.auto_tts true", items["tts"]["fix"])
+        # El paso fijo explica dónde están los toggles que el plugin no puede leer.
+        desktop = items["desktop"]["detail"]
+        for hint in ("This device", "la oreja", "el parlante", "botón negro"):
+            self.assertIn(hint, desktop)
+        self.assertNotIn("fix", items["desktop"])
 
     def test_configured_machine_is_all_ok(self):
         config = {
@@ -79,7 +84,7 @@ class SetupChecksTest(unittest.TestCase):
         }
         items = self.run_with(config, modules=("faster_whisper", "pyopen_wakeword"))
         self.assertEqual({k: v["status"] for k, v in items.items()},
-                         {k: "ok" for k in ("overlay", "stt", "stt_language", "tts", "wake", "computer_use")})
+                         {**{k: "ok" for k in ("overlay", "stt", "stt_language", "tts", "wake", "computer_use")}, "desktop": "info"})
         self.assertEqual(checks.surface_data()["items"][0]["id"], "overlay")
 
     def test_unreadable_config_degrades_to_info(self):
@@ -90,7 +95,7 @@ class SetupChecksTest(unittest.TestCase):
         with patch.object(checks, "_check_overlay", side_effect=RuntimeError("boom")), \
              patch.object(checks, "_read_config", return_value={}):
             items = checks.run_checks()
-        self.assertEqual(len(items), 6)
+        self.assertEqual(len(items), 7)
         self.assertEqual(items[0]["status"], "info")
 
     def test_text_version_includes_commands(self):
