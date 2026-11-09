@@ -14,7 +14,9 @@ description: >-
   `npm ci`, downloading pinned npm packages including the Electron binary;
   nothing binary is committed; disable with HERMIS_OVERLAY_AUTOSTART=0); the
   overlay loads https images and sandboxed artifact scripts from
-  cdnjs/jsdelivr/unpkg only; moves, resizes and focuses real windows via Win32
+  cdnjs/jsdelivr/unpkg only; the overlay connects to the local Hermes gateway
+  (control pipe for a short-lived session ticket under your identity, then the
+  loopback /api/ws) and only listens to voice.status and wake.detected; moves, resizes and focuses real windows via Win32
   (user32) and launches apps without a shell; copies html/svg blocks from
   replies to the overlay via post_llm_call while Autopilot is on; writes
   state.json, overlay.json and overlay.log to the plugin data dir; Windows only.

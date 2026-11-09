@@ -16,7 +16,7 @@ The agent never sends HTML for its own surfaces, only data. The overlay decides 
 | **Surfaces** | `render_surface` draws `notification`, `document`, `email_list`, `table`, `cards`, `web`, `image` or `artifact` surfaces. `close_surface` and `list_surfaces` manage them. State persists between turns and restarts. |
 | **Artifacts** | With Autopilot on, ```` ```html ```` and ```` ```svg ```` blocks in Hermes' replies are copied to the overlay as sandboxed artifact surfaces. |
 | **Windows** | `layout_windows` splits, tiles (`grid`), maximizes, focuses or minimizes others on real Windows windows through Win32. `launch_app` finds and opens desktop apps. |
-| **Living orb** | The orb shows thinking / acting from Hermes' own turn and tool hooks. |
+| **Living orb** | The orb shows listening from Hermes' voice events (`voice.status`, `wake.detected` on the local gateway) and thinking / acting from Hermes' own turn and tool hooks. |
 | **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check). |
 
 Voice, the "hey hermes" wake word and computer use all come from Hermes itself. This plugin does not reimplement them.
@@ -70,6 +70,7 @@ Everything the plugin does outside of plain Python tool calls:
 - The overlay window can load **https images** in `image` surfaces.
 - Artifact surfaces run in a sandboxed frame whose CSP allows scripts only from `cdnjs.cloudflare.com`, `cdn.jsdelivr.net` and `unpkg.com`, and blocks all other connections (`connect-src 'none'`).
 - Links (`web` surfaces, links in documents) open in your **default browser** when you click them. The overlay never browses by itself.
+- To animate the orb, the overlay connects to **your local Hermes gateway**: it asks the gateway's control pipe (Windows named pipe `hermes-gateway-<hash>`, or `gateway.sock` on POSIX) for its address and a short-lived session ticket under your own user identity, then opens the gateway WebSocket (`/api/ws`, by default `127.0.0.1:8642`) and only listens to `voice.status` and `wake.detected`. It sends nothing to the agent. Overrides: `HERMES_GATEWAY_WS_URL` / `HERMES_GATEWAY_URL`, `HERMES_GATEWAY_TOKEN` / `HERMES_API_TOKEN`, `HERMES_API_PORT`.
 - The plugin itself makes no outbound requests.
 
 **Desktop control**

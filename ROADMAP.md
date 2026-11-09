@@ -67,7 +67,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 4 · Lun 9/11 — El orbe vivo + demo completa
 
-- [ ] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → intro
+- [x] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → intro (#11, #14; falta probarlo con el gateway real)
 - [x] Hooks `pre/post_tool_call` → actuando; turnos → pensando / hablando
 - [x] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
 - [ ] Pulir la animación de la transformación barra ↔ orbe
