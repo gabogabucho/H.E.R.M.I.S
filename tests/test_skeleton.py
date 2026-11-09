@@ -405,6 +405,9 @@ class SkeletonTest(unittest.TestCase):
                 ap_on = json.loads(tools.autopilot({"state": "on"}))
                 self.assertTrue(ap_on["ok"])
                 self.assertEqual(ap_on["delivered"], 1)
+                # Entrar al modo limpia primero lo que quedó de una sesión anterior.
+                cleared = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(cleared, {"type": "close", "id": "all"})
                 mode_on = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(mode_on, {"type": "mode", "autopilot": True})
 
@@ -573,9 +576,10 @@ class AutostartTest(unittest.TestCase):
             self.assertEqual(kwargs["stderr"], subprocess.STDOUT)
             self.assertIsNotNone(kwargs["stdout"])
             if sys.platform == "win32":
-                self.assertEqual(kwargs["creationflags"], subprocess.DETACHED_PROCESS
-                                 | subprocess.CREATE_NEW_PROCESS_GROUP
-                                 | subprocess.CREATE_NO_WINDOW)
+                # Sin DETACHED_PROCESS: con él Windows ignora CREATE_NO_WINDOW y npm
+                # deja una ventana de terminal abierta.
+                self.assertEqual(kwargs["creationflags"],
+                                 subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW)
             else:
                 self.assertTrue(kwargs["start_new_session"])
             self.assertTrue((Path(self.tmp) / "overlay.log").exists())
@@ -687,6 +691,55 @@ class AutostartTest(unittest.TestCase):
             self.assertNotIn("shell", popen_calls[0][1])
             self.assertTrue(launched["focused"])
             self.assertEqual(launched["window"], "Sin título: Bloc de notas")
+
+    def test_already_open_app_wins_over_another_window_changing_title(self) -> None:
+        # Visto en vivo: WhatsApp ya abierto y una pestaña de Chrome que se actualiza
+        # sola; antes se enfocaba Chrome. Además no espera los 5 s enteros.
+        before = {2: "Video - Google Chrome", 4: "WhatsApp"}
+        after = {2: "Otro video - Google Chrome", 4: "WhatsApp"}
+        fronted: list[int] = []
+        start = time.monotonic()
+        with patch.object(win32_windows, "_window_snapshot", lambda: after), \
+             patch.object(win32_windows, "_bring_to_front", lambda h: fronted.append(h) or True), \
+             patch.object(win32_windows, "_LAUNCH_POLL_S", 0.01):
+            out = win32_windows._bring_launched_window_to_front(before, "WhatsApp")
+        self.assertEqual(out, {"focused": True, "window": "WhatsApp"})
+        self.assertEqual(fronted, [4])
+        self.assertLess(time.monotonic() - start, 3.0)
+
+    def test_store_apps_launch_through_their_start_menu_id(self) -> None:
+        # WhatsApp (Microsoft Store) no tiene .exe en PATH ni en App Paths.
+        apps = [("WhatsApp", "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"), ("Calculadora", "Microsoft.WindowsCalculator!App")]
+        with patch.object(win32_windows, "_start_apps", return_value=apps):
+            self.assertEqual(win32_windows.find_start_app("whatsapp"), apps[0])
+            self.assertEqual(win32_windows.find_start_app("calcu"), apps[1])
+            self.assertIsNone(win32_windows.find_start_app("telegram"))
+        popen_calls: list = []
+        with patch.object(win32_windows, "is_windows", lambda: True), \
+             patch.object(win32_windows, "resolve_executable", lambda name: None), \
+             patch.object(win32_windows, "_start_apps", return_value=apps), \
+             patch.object(win32_windows, "_window_snapshot", lambda: {}), \
+             patch.object(win32_windows, "_bring_launched_window_to_front",
+                          lambda before, app: {"focused": True, "window": "WhatsApp"}), \
+             patch.object(win32_windows.subprocess, "Popen",
+                          lambda *a, **k: popen_calls.append((a, k)) or MagicMock(pid=7)), \
+             patch.object(subprocess, "DETACHED_PROCESS", 0x8, create=True), \
+             patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, create=True):
+            out = win32_windows.launch_application("whatsapp")
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["store_app"], "WhatsApp")
+        self.assertEqual(popen_calls[0][0][0], ["explorer.exe", "shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"])
+        self.assertNotIn("shell", popen_calls[0][1])
+
+    def test_entering_autopilot_starts_with_a_clean_desk(self) -> None:
+        # El modo pudo quedar activo con superficies de una sesión anterior.
+        ws_server.save_state({"autopilot": True, "seq": 3, "onboarded": True,
+                              "surfaces": {"artifact-3": {"id": "artifact-3", "surface": "artifact", "data": {}}}})
+        sent: list[dict] = []
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]):
+            tools.autopilot({"state": "on"})
+        self.assertEqual(ws_server.load_state()["surfaces"], {})
+        self.assertEqual(sent[0], {"type": "close", "id": "all"})
 
     def test_launched_app_window_is_brought_to_front(self) -> None:
         # El gateway corre en segundo plano: sin esto las apps abren detrás o minimizadas.

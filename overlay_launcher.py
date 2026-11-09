@@ -59,11 +59,10 @@ def _recent_launch(now: float, data_dir: Path) -> bool:
 def _detach_kwargs() -> dict[str, Any]:
     """Flags de desprendimiento del proceso según plataforma."""
     if sys.platform == "win32":
-        return {"creationflags": (
-            subprocess.DETACHED_PROCESS
-            | subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.CREATE_NO_WINDOW
-        )}
+        # Sin DETACHED_PROCESS a propósito: junto a él Windows ignora CREATE_NO_WINDOW,
+        # npm.cmd queda sin consola y node abre una ventana de terminal visible. Así se
+        # crea una consola oculta que heredan npm, node y Electron.
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
     return {"start_new_session": True}
 
 
