@@ -93,3 +93,27 @@ class OrbLifecycleTest(unittest.TestCase):
             self.assertEqual(send.call_args.args[0]["orb"], "thinking")
             self.call("post_llm_call", turn_id="new")
             self.assertEqual(send.call_args.args[0]["orb"], "idle")
+
+    def test_orb_set_listening_respects_autopilot_and_deduplicates(self):
+        with patch.object(hermis.ws_server, "broadcast", return_value=1) as send:
+            hermis.orb_lifecycle.set_listening(True)
+            hermis.orb_lifecycle.set_listening(True)
+            hermis.orb_lifecycle.set_listening(False)
+            hermis.orb_lifecycle.set_listening(False)
+            self.assertEqual([c.args[0] for c in send.call_args_list], [
+                {"type": "state", "orb": "listening"},
+                {"type": "state", "orb": "idle"},
+            ])
+            send.reset_mock()
+            hermis.ws_server.save_state({"autopilot": False, "surfaces": {}})
+            hermis.orb_lifecycle.set_listening(True)
+            send.assert_not_called()
+
+    def test_orb_listening_transitions_to_thinking_and_idle(self):
+        with patch.object(hermis.ws_server, "broadcast", return_value=1) as send:
+            hermis.orb_lifecycle.set_listening(True)
+            self.call("pre_llm_call")
+            self.call("post_llm_call")
+            self.assertEqual([c.args[0] for c in send.call_args_list], [
+                {"type": "state", "orb": state} for state in ("listening", "thinking", "idle")
+            ])
