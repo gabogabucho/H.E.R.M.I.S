@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, shell } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -273,6 +273,16 @@ ipcMain.handle('hermis:open-external', (_e, url) => {
   }
   console.warn('[overlay] open-external rechazado (solo http/https):', typeof url);
 });
+
+// Onboarding: el botón "Copiar" solo escribe texto en el portapapeles; nunca ejecuta nada.
+ipcMain.handle('hermis:copy-text', (_e, text) => {
+  if (typeof text !== 'string' || !text || text.length > 4096) return false;
+  clipboard.writeText(text);
+  return true;
+});
+
+// Onboarding: "Volver a revisar" pide al plugin que recalcule el checklist.
+ipcMain.handle('hermis:setup-refresh', () => sendToPlugin({ type: 'setup.refresh' }));
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

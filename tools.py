@@ -12,6 +12,7 @@ import logging
 from typing import Any, Callable
 
 from . import overlay_launcher
+from . import setup_checks
 from . import win32_windows
 from . import ws_server
 from . import orb_lifecycle
@@ -30,6 +31,23 @@ LEVELS = ("info", "success", "error")
 MAX_ARTIFACT_BYTES = 256 * 1024
 
 logger = logging.getLogger("hermis")
+SETUP_ID = "hermis-setup"
+
+
+def _setup_entry() -> dict[str, Any]:
+    return {"id": SETUP_ID, "surface": "setup", "data": setup_checks.surface_data()}
+
+
+def show_setup() -> dict[str, Any]:
+    """Dibuja (o actualiza) el checklist de configuración; lo usan /hermis setup y 'Volver a revisar'."""
+    entry = _setup_entry()
+    st = ws_server.load_state()
+    st.setdefault("surfaces", {})[SETUP_ID] = entry
+    st["onboarded"] = True
+    ws_server.save_state(st)
+    delivered, note = _safe_broadcast({"type": "render", "surface": "setup", "id": SETUP_ID, "data": entry["data"]})
+    launch_note = _maybe_start_overlay(delivered)
+    return {"delivered": delivered, "note": launch_note or note}
 
 
 def _always_json(handler: Callable[..., str]) -> Callable[..., str]:
@@ -147,8 +165,13 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     active = state == "on"
     st = ws_server.load_state()
     st["autopilot"] = active
+    first_run = active and not st.get("onboarded")
     if active:
         _refresh_windows_cache(st)
+        if first_run:
+            # Onboarding visual: solo la primera vez; después, con /hermis setup.
+            st.setdefault("surfaces", {})[SETUP_ID] = _setup_entry()
+            st["onboarded"] = True
     else:
         st["surfaces"] = {}
         st.pop("windows", None)
@@ -159,6 +182,9 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         # overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
         _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
+    if first_run:
+        entry = st["surfaces"][SETUP_ID]
+        _safe_broadcast({"type": "render", "surface": entry["surface"], "id": SETUP_ID, "data": entry["data"]})
     if active:
         launch_note = _maybe_start_overlay(delivered)
         if launch_note:

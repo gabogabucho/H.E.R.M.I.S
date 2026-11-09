@@ -6,16 +6,25 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import tools, ws_server
+from . import setup_checks, tools, ws_server
 
-USAGE = "Usage: /hermis [status|on|off|check]"
+USAGE = "Usage: /hermis [status|on|off|check|setup]"
 
 
 def handle(raw_args: str = "") -> str:
-    """Return status, switch the mode, or inspect local prerequisites."""
+    """Return status, switch the mode, inspect local prerequisites, or show the setup checklist."""
     action = raw_args.strip().lower() or "status"
-    if action not in {"status", "on", "off", "check"}:
+    if action not in {"status", "on", "off", "check", "setup"}:
         return USAGE
+    if action == "setup":
+        # Mismo checklist en el chat y en el overlay (con botones Copiar).
+        try:
+            shown = tools.show_setup()
+            where = ("Also on screen in the overlay." if shown.get("delivered")
+                     else str(shown.get("note") or "The overlay will show it when it starts."))
+        except Exception:
+            where = "Could not draw it in the overlay."
+        return f"H.E.R.M.I.S setup (read-only; copy and run what is missing):\n{setup_checks.as_text()}\n{where}"
     if action in {"on", "off"}:
         result = json.loads(tools.autopilot({"state": action}))
         if not result.get("ok"):

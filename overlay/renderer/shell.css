@@ -833,3 +833,88 @@ lumen-window {
 .hidden {
   display: none !important;
 }
+
+/* setup: checklist del onboarding (solo lectura + botones Copiar) */
+.setup-subtitle {
+  font-size: 0.85rem;
+  color: var(--lumen-text-muted);
+  margin-bottom: 10px;
+}
+
+.setup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setup-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.setup-icon {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--lumen-text-muted);
+}
+
+.setup-ok .setup-icon { background: #2e9d5b; }
+.setup-warn .setup-icon { background: #d9822b; }
+.setup-info .setup-icon { background: var(--lumen-primary); }
+
+.setup-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setup-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.setup-detail {
+  font-size: 0.8rem;
+  color: var(--lumen-text-muted);
+}
+
+.setup-fix {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 4px;
+}
+
+.setup-fix code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.14);
+}
+
+.setup-copy {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--lumen-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lumen-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.setup-refresh {
+  margin-top: 14px;
+}

@@ -577,7 +577,76 @@ function renderArtifact(body, data) {
   return true;
 }
 
+// Onboarding: checklist que arma el plugin con chequeos de solo lectura. Cada
+// paso pendiente trae su comando y un botón "Copiar" (no ejecuta nada).
+const SETUP_ICONS = { ok: '✓', warn: '!', info: 'i' };
+
+function renderSetup(body, data) {
+  if (!Array.isArray(data.items) || !data.items.length) return false;
+  if (typeof data.subtitle === 'string' && data.subtitle) {
+    const sub = document.createElement('div');
+    sub.className = 'setup-subtitle';
+    sub.textContent = data.subtitle;
+    body.appendChild(sub);
+  }
+  const list = document.createElement('div');
+  list.className = 'setup-list';
+  for (const item of data.items) {
+    if (!item || typeof item !== 'object' || typeof item.label !== 'string') continue;
+    const status = ['ok', 'warn', 'info'].includes(item.status) ? item.status : 'info';
+    const row = document.createElement('div');
+    row.className = `setup-item setup-${status}`;
+    const icon = document.createElement('span');
+    icon.className = 'setup-icon';
+    icon.textContent = SETUP_ICONS[status];
+    const text = document.createElement('div');
+    text.className = 'setup-text';
+    const label = document.createElement('div');
+    label.className = 'setup-label';
+    label.textContent = item.label;
+    text.appendChild(label);
+    if (typeof item.detail === 'string' && item.detail) {
+      const detail = document.createElement('div');
+      detail.className = 'setup-detail';
+      detail.textContent = item.detail;
+      text.appendChild(detail);
+    }
+    if (typeof item.fix === 'string' && item.fix && status !== 'ok') {
+      const fix = document.createElement('div');
+      fix.className = 'setup-fix';
+      const code = document.createElement('code');
+      code.textContent = item.fix;
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'setup-copy';
+      copy.textContent = 'Copiar';
+      copy.addEventListener('click', () => {
+        window.hermis.copyText(item.fix).then((ok) => {
+          copy.textContent = ok ? 'Copiado' : 'No se pudo';
+          setTimeout(() => { copy.textContent = 'Copiar'; }, 1500);
+        }).catch(() => { copy.textContent = 'No se pudo'; });
+      });
+      fix.append(code, copy);
+      text.appendChild(fix);
+    }
+    row.append(icon, text);
+    list.appendChild(row);
+  }
+  body.appendChild(list);
+  const refresh = document.createElement('button');
+  refresh.type = 'button';
+  refresh.className = 'web-open setup-refresh';
+  refresh.textContent = 'Volver a revisar';
+  refresh.addEventListener('click', () => {
+    refresh.textContent = 'Revisando…';
+    window.hermis.refreshSetup().catch(() => { refresh.textContent = 'Volver a revisar'; });
+  });
+  body.appendChild(refresh);
+  return true;
+}
+
 const SURFACE_RENDERERS = {
+  setup: renderSetup,
   email_list: renderEmailList,
   table: renderTable,
   cards: renderCards,
@@ -587,6 +656,7 @@ const SURFACE_RENDERERS = {
 };
 
 const SURFACE_TITLES = {
+  setup: 'Configuración',
   email_list: 'Correos',
   table: 'Tabla',
   cards: 'Tarjetas',
