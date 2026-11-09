@@ -86,6 +86,30 @@ class SkeletonTest(unittest.TestCase):
         self.assertFalse(json.loads(tools.close_surface(None))["ok"])  # type: ignore[arg-type]
         self.assertFalse(json.loads(tools.close_surface({"id": "  "}))["ok"])
 
+    def test_tools_return_json_on_unexpected_errors(self) -> None:
+        # Windows suele bloquear el reemplazo atómico de state.json (antivirus, indexador).
+        locked = PermissionError(13, "Access is denied")
+        calls = [
+            lambda: tools.autopilot({"state": "on"}),
+            lambda: tools.render_surface({"surface": "document", "data": {"title": "x"}}),
+            lambda: tools.close_surface({"id": "all"}),
+            lambda: tools.layout_windows({"layout": "maximize", "windows": ["Excel"]}),
+            lambda: tools.launch_app({"app": "notepad"}),
+        ]
+        with patch.object(ws_server, "save_state", side_effect=locked), \
+             patch.object(tools, "_safe_broadcast", return_value=(0, None)), \
+             patch.object(win32_windows, "apply_layout", return_value={"ok": True}), \
+             patch.object(win32_windows, "launch_application", return_value={"ok": True}):
+            for call in calls:
+                out = json.loads(call())
+                self.assertEqual(out["error"], "internal_error")
+                self.assertFalse(out["ok"])
+                self.assertIn("PermissionError", out["message"])
+        with patch.object(ws_server, "load_state", side_effect=OSError("disk gone")):
+            out = json.loads(tools.list_surfaces({}))
+            self.assertEqual(out["error"], "internal_error")
+        self.assertEqual(tools.autopilot.__name__, "autopilot")
+
     def test_autopilot_off_clears_the_overlay(self) -> None:
         sent: list[dict] = []
         with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]):

@@ -6,8 +6,10 @@ acepta ``**kwargs`` y lee únicamente el cache local ``state.json``.
 """
 from __future__ import annotations
 
+import functools
 import json
-from typing import Any
+import logging
+from typing import Any, Callable
 
 from . import overlay_launcher
 from . import win32_windows
@@ -26,6 +28,21 @@ SURFACES = (
 )
 LEVELS = ("info", "success", "error")
 MAX_ARTIFACT_BYTES = 256 * 1024
+
+logger = logging.getLogger("hermis")
+
+
+def _always_json(handler: Callable[..., str]) -> Callable[..., str]:
+    """Cumple el contrato del módulo: un fallo inesperado (disco, Win32) vuelve como JSON."""
+    @functools.wraps(handler)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        try:
+            return handler(*args, **kwargs)
+        except Exception as exc:
+            logger.exception("tool %s falló", handler.__name__)
+            return _json({"ok": False, "error": "internal_error",
+                          "message": f"{type(exc).__name__}: {exc}"})
+    return wrapper
 
 
 def _non_empty_str(val: Any) -> bool:
@@ -119,6 +136,7 @@ def _refresh_windows_cache(st: dict[str, Any]) -> None:
         pass
 
 
+@_always_json
 def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     """Activa o desactiva el Modo Piloto Automático y persiste el estado."""
     if not isinstance(args, dict):
@@ -156,6 +174,7 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     return _json({k: v for k, v in out.items() if v is not None})
 
 
+@_always_json
 def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
     """Dibuja una superficie flotante sobre el escritorio real."""
     if not isinstance(args, dict):
@@ -214,6 +233,7 @@ def render_surface(args: dict[str, Any], **kwargs: Any) -> str:
     return _json({k: v for k, v in out.items() if v is not None})
 
 
+@_always_json
 def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
     """Cierra una superficie activa por id o todas con id='all'."""
     if not isinstance(args, dict):
@@ -246,6 +266,7 @@ def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
     return _json({k: v for k, v in out.items() if v is not None})
 
 
+@_always_json
 def list_surfaces(args: dict[str, Any] | None = None, **kwargs: Any) -> str:
     """Devuelve el estado de autopilot y las superficies activas."""
     st = ws_server.load_state()
@@ -257,6 +278,7 @@ def list_surfaces(args: dict[str, Any] | None = None, **kwargs: Any) -> str:
     })
 
 
+@_always_json
 def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
     """Acomoda, enfoca o maximiza ventanas reales del escritorio de Windows."""
     if not isinstance(args, dict):
@@ -283,6 +305,7 @@ def layout_windows(args: dict[str, Any], **kwargs: Any) -> str:
     return _json(res)
 
 
+@_always_json
 def launch_app(args: dict[str, Any], **kwargs: Any) -> str:
     """Abre una aplicación de escritorio por nombre o alias sin usar shell."""
     if not isinstance(args, dict):
