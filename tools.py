@@ -164,11 +164,16 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         return _json({"ok": False, "error": "invalid_state", "message": "state debe ser 'on' u 'off'"})
     active = state == "on"
     st = ws_server.load_state()
+    was_active = bool(st.get("autopilot"))
     st["autopilot"] = active
     first_run = active and not st.get("onboarded")
-    # Entrar o salir del modo arranca con el escritorio limpio: sin superficies de
-    # una sesión anterior (el modo pudo quedar activo si se cerró Hermes sin salir).
-    st["surfaces"] = {}
+    # Salir siempre limpia. Entrar limpia solo si el modo YA estaba activo: son
+    # superficies de una sesión anterior (se cerró Hermes sin salir del modo). Si
+    # venía apagado, lo recién dibujado es intencional (el modelo puede dibujar y
+    # después activar el modo en el mismo turno) y se queda.
+    clear = not active or was_active
+    if clear:
+        st["surfaces"] = {}
     if active:
         _refresh_windows_cache(st)
         if first_run:
@@ -179,8 +184,9 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         st.pop("windows", None)
     ws_server.save_state(st)
     orb_lifecycle.reset()
-    # El overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
-    _safe_broadcast({"type": "close", "id": "all"})
+    if clear:
+        # El overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
+        _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     if first_run:
         entry = st["surfaces"][SETUP_ID]
