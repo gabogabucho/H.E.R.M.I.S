@@ -79,6 +79,10 @@ def _check_overlay() -> dict[str, Any]:
 def _check_stt(cfg: dict[str, Any] | None) -> dict[str, Any]:
     label = "Transcripción de voz"
     provider = str(_get(cfg, "stt.provider") or "local")
+    if provider == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
+        return _item("stt", label, "warn",
+                     f"ElevenLabs elegido pero falta ELEVENLABS_API_KEY (agregala, sin #, en {hermes_home() / '.env'} y reiniciá).",
+                     "ELEVENLABS_API_KEY=")
     if provider != "local":
         return _item("stt", label, "ok", f"Proveedor en la nube: {provider}.")
     if _has_module("faster_whisper"):

@@ -55,6 +55,14 @@ class SetupChecksTest(unittest.TestCase):
         self.assertEqual(ready["tts"]["status"], "ok")
         self.assertNotIn("secret-value", str(ready))
 
+    def test_elevenlabs_transcription_needs_the_key_too(self):
+        config = {"stt": {"provider": "elevenlabs", "language": "es"}}
+        missing = self.run_with(config, env={})
+        self.assertEqual(missing["stt"]["status"], "warn")
+        self.assertEqual(missing["stt"]["fix"], "ELEVENLABS_API_KEY=")
+        ready = self.run_with(config, env={"ELEVENLABS_API_KEY": "secret-value"})
+        self.assertEqual(ready["stt"]["status"], "ok")
+
     def test_configured_machine_is_all_ok(self):
         config = {
             "stt": {"language": "es"},
