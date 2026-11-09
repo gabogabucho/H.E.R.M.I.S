@@ -635,6 +635,9 @@ class AutostartTest(unittest.TestCase):
         popen_calls: list = []
         fake_proc = MagicMock(pid=4242)
         with patch.object(win32_windows, "is_windows", lambda: True), \
+             patch.object(win32_windows, "_window_snapshot", lambda: {}), \
+             patch.object(win32_windows, "_bring_launched_window_to_front",
+                          lambda before, app: {"focused": True, "window": "Sin título: Bloc de notas"}), \
              patch.object(win32_windows.shutil, "which", lambda exe: f"C:\\Windows\\System32\\{exe}"), \
              patch.object(win32_windows.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k)) or fake_proc):
             # Windows-only subprocess flags must also be mocked on Linux.
@@ -646,6 +649,36 @@ class AutostartTest(unittest.TestCase):
             self.assertEqual(launched["pid"], 4242)
             self.assertEqual(popen_calls[0][0][0], ["C:\\Windows\\System32\\notepad.exe", "notas.txt"])
             self.assertNotIn("shell", popen_calls[0][1])
+            self.assertTrue(launched["focused"])
+            self.assertEqual(launched["window"], "Sin título: Bloc de notas")
+
+    def test_launched_app_window_is_brought_to_front(self) -> None:
+        # El gateway corre en segundo plano: sin esto las apps abren detrás o minimizadas.
+        before = {1: "Explorador", 2: "Nueva pestaña - Google Chrome"}
+        cases = [
+            # Ventana nueva (Calculadora vive en ApplicationFrameHost, no en el PID lanzado).
+            ([{**before, 3: "Calculadora"}], "calculadora", {"focused": True, "window": "Calculadora"}, [3]),
+            # Chrome reusa su proceso: no hay ventana nueva, cambia el título de la existente.
+            ([{1: "Explorador", 2: "Google - Google Chrome"}] * 3, "chrome",
+             {"focused": True, "window": "Google - Google Chrome"}, [2]),
+            # No apareció nada reconocible.
+            ([before] * 3, "spotify", {"focused": False}, []),
+        ]
+        for snapshots, app, expected, raised in cases:
+            fronted: list[int] = []
+            feed = iter(snapshots)
+            last = {"value": before}
+
+            def snapshot() -> dict[int, str]:
+                last["value"] = next(feed, last["value"])
+                return last["value"]
+
+            with patch.object(win32_windows, "_window_snapshot", snapshot), \
+                 patch.object(win32_windows, "_bring_to_front", lambda h: fronted.append(h) or True), \
+                 patch.object(win32_windows, "_LAUNCH_WAIT_S", 0.03), \
+                 patch.object(win32_windows, "_LAUNCH_POLL_S", 0.01):
+                self.assertEqual(win32_windows._bring_launched_window_to_front(before, app), expected)
+            self.assertEqual(fronted, raised)
 
 
 async def _listen(demo: bool = False) -> None:
