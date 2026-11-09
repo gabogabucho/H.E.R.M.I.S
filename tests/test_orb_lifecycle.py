@@ -2,6 +2,7 @@
 import asyncio
 import json
 import shutil
+from pathlib import Path
 import subprocess
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -158,17 +159,21 @@ class OrbLifecycleTest(unittest.TestCase):
             )
             send.assert_not_called()
 
-    def test_ws_server_wake_detected_broadcasts_intro_and_sets_listening(self):
+    def test_ws_server_wake_detected_only_sets_listening(self):
+        # Repetir la intro en cada wake taparía las superficies abiertas durante la demo.
         with patch.object(hermis.ws_server, "broadcast", return_value=1) as send:
             hermis.ws_server._handle_client_message(
                 json.dumps({"type": "wake.detected", "phrase": "hey hermes"})
             )
             self.assertEqual([c.args[0] for c in send.call_args_list], [
                 {"type": "state", "orb": "listening"},
-                {"type": "intro", "phrase": "hey hermes"},
             ])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for gateway_client tests")
+    @unittest.skipUnless(
+        (Path(__file__).resolve().parent.parent / "overlay" / "node_modules" / "ws").is_dir(),
+        "overlay dependencies missing: run `npm ci --ignore-scripts` in overlay/",
+    )
     def test_gateway_client_node_parsing_discovery_and_ws(self):
         gateway_client_path = (test_commands.ROOT / "overlay" / "gateway_client.js").as_posix()
         script = f"""

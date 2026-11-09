@@ -802,18 +802,10 @@ class LumenShell extends HTMLElement {
     this.windows.delete(id);
   }
 
+  // Wake word dentro del modo: solo pulso de escucha. La intro completa (velo +
+  // texto) es para la entrada al modo; repetirla taparía las superficies abiertas.
   _handleIntro() {
     if (!this.autopilot) return;
-    const orb = this.querySelector('lumen-orb');
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (orb) {
-      if (reduced) {
-        orb.classList.add('autopilot');
-      } else if (!this._introPlaying) {
-        this._cancelMorph();
-        this._playIntro(orb);
-      }
-    }
     this.setShellState('listening');
   }
 

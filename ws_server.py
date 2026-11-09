@@ -148,12 +148,9 @@ def _handle_client_message(raw: Any) -> None:
         with contextlib.suppress(Exception):
             from . import orb_lifecycle
 
+            # Sin intro: dentro del modo el wake solo pone el orbe a escuchar
+            # (la intro completa ya la dispara la entrada al piloto automático).
             orb_lifecycle.set_listening(True)
-            if load_state().get("autopilot"):
-                phrase = msg.get("phrase")
-                if not isinstance(phrase, str) or not phrase.strip():
-                    phrase = "hey hermes"
-                broadcast({"type": "intro", "phrase": phrase})
 
 
 async def _handler(conn: Any) -> None:
