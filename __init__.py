@@ -49,7 +49,6 @@ def register(ctx) -> None:
     # el puente de artefactos y el orbe conviven como dos post_llm_call.
     ctx.register_hook("post_llm_call", artifact_bridge.post_llm_call)
     ctx.register_hook("post_llm_call", orb_lifecycle.post_llm_call)
-    orb_lifecycle.install_voice_hooks()
     ctx.register_command(
         name="hermis", handler=commands.handle,
         description="Show H.E.R.M.I.S status, switch autopilot, or check installation.",
