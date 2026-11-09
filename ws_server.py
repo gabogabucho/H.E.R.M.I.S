@@ -112,6 +112,8 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
                 }
                 if isinstance(raw.get("windows"), list):
                     out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
+                if raw.get("onboarded"):
+                    out["onboarded"] = True
                 return out
         except Exception:
             pass
@@ -134,7 +136,17 @@ def _handle_client_message(raw: Any) -> None:
     if not isinstance(msg, dict):
         return
     msg_type = msg.get("type")
-    if msg_type == "voice.status":
+    if msg_type == "setup.refresh":
+        # Botón "Volver a revisar" del onboarding. Fuera del loop del WS: los
+        # chequeos leen disco y no deben frenar la entrega de mensajes.
+        def _refresh() -> None:
+            with contextlib.suppress(Exception):
+                from . import tools
+
+                tools.show_setup()
+
+        threading.Thread(target=_refresh, daemon=True, name="hermis-setup-refresh").start()
+    elif msg_type == "voice.status":
         with contextlib.suppress(Exception):
             from . import orb_lifecycle
 

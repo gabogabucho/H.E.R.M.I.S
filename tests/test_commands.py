@@ -30,6 +30,7 @@ class CommandTest(unittest.TestCase):
         hermis.ws_server.save_state({
             "autopilot": True, "seq": 1,
             "surfaces": {"doc": {"id": "doc", "surface": "document", "data": {"title": "Notes"}}},
+            "onboarded": True,  # el onboarding tiene sus propios tests
         })
         self.path = Path(self.tmp.name) / "state.json"
 
@@ -40,7 +41,7 @@ class CommandTest(unittest.TestCase):
         registration = ctx.register_command.call_args
         self.assertIsNotNone(registration, "register() must expose /hermis")
         self.assertEqual(registration.kwargs["name"], "hermis")
-        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check]")
+        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup]")
         return registration.kwargs["handler"](args)
 
     def test_command_status_is_read_only(self):

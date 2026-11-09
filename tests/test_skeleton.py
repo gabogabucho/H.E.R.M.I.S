@@ -46,6 +46,42 @@ class SkeletonTest(unittest.TestCase):
             ws_server._STATE["token"] = None
             ws_server._clients.clear()
         ws_server._ready.clear()
+        # Estos tests prueban el modo ya configurado; el onboarding tiene los suyos.
+        ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True})
+        # Nunca leer las ventanas reales del escritorio de quien corre los tests.
+        windows = patch.object(win32_windows, "list_open_windows", return_value=[])
+        windows.start()
+        self.addCleanup(windows.stop)
+
+    def test_first_autopilot_shows_setup_once(self) -> None:
+        ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}})
+        sent: list[dict] = []
+        fake = {"title": "Configuración de H.E.R.M.I.S", "subtitle": "Todo listo.",
+                "items": [{"id": "overlay", "label": "Overlay", "status": "ok", "detail": "Listo."}]}
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]), \
+             patch.object(hermis.setup_checks, "surface_data", return_value=fake):
+            tools.autopilot({"state": "on"})
+            first = [m for m in sent if m.get("surface") == "setup"]
+            self.assertEqual(first, [{"type": "render", "surface": "setup", "id": "hermis-setup", "data": fake}])
+            # Persistido: si el overlay arranca después, la sincronización al conectar lo dibuja.
+            self.assertIn("hermis-setup", ws_server.load_state()["surfaces"])
+            self.assertTrue(ws_server.load_state()["onboarded"])
+            sent.clear()
+            tools.autopilot({"state": "off"})
+            tools.autopilot({"state": "on"})
+            self.assertFalse([m for m in sent if m.get("surface") == "setup"])
+            # /hermis setup lo vuelve a abrir cuando el usuario quiera.
+            tools.show_setup()
+            self.assertEqual(sent[-1]["surface"], "setup")
+
+    def test_setup_refresh_message_redraws_checklist(self) -> None:
+        with patch.object(tools, "show_setup") as show:
+            ws_server._handle_client_message(json.dumps({"type": "setup.refresh"}))
+            for _ in range(50):
+                if show.called:
+                    break
+                time.sleep(0.02)
+            show.assert_called_once()
 
     def test_schema_and_validation(self) -> None:
         self.assertEqual(schemas.AUTOPILOT_SCHEMA["name"], "autopilot")

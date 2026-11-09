@@ -17,7 +17,8 @@ The agent never sends HTML for its own surfaces, only data. The overlay decides 
 | **Artifacts** | With Autopilot on, ```` ```html ```` and ```` ```svg ```` blocks in Hermes' replies are copied to the overlay as sandboxed artifact surfaces. |
 | **Windows** | `layout_windows` splits, tiles (`grid`), maximizes, focuses or minimizes others on real Windows windows through Win32. `launch_app` finds and opens desktop apps. |
 | **Living orb** | The orb shows listening from Hermes' voice events (`voice.status`, `wake.detected` on the local gateway) and thinking / acting from Hermes' own turn and tool hooks. |
-| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check). |
+| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist). |
+| **Onboarding** | The first time Autopilot turns on, the overlay shows a setup checklist (overlay, speech-to-text, its language, text-to-speech, wake word, computer-use approvals). Every missing step comes with the exact command and a **Copy** button; nothing is installed or changed for you. Reopen it any time with `/hermis setup`. |
 
 Voice, the "hey hermes" wake word and computer use all come from Hermes itself. This plugin does not reimplement them.
 
@@ -72,6 +73,10 @@ Everything the plugin does outside of plain Python tool calls:
 - Links (`web` surfaces, links in documents) open in your **default browser** when you click them. The overlay never browses by itself.
 - To animate the orb, the overlay connects to **your local Hermes gateway**: it asks the gateway's control pipe (Windows named pipe `hermes-gateway-<hash>`, or `gateway.sock` on POSIX) for its address and a short-lived session ticket under your own user identity, then opens the gateway WebSocket (`/api/ws`, by default `127.0.0.1:8642`) and only listens to `voice.status` and `wake.detected`. It sends nothing to the agent. Overrides: `HERMES_GATEWAY_WS_URL` / `HERMES_GATEWAY_URL`, `HERMES_GATEWAY_TOKEN` / `HERMES_API_TOKEN`, `HERMES_API_PORT`.
 - The plugin itself makes no outbound requests.
+
+**Setup checklist** (`/hermis setup` and the first Autopilot run)
+- Reads Hermes `config.yaml` **read-only** and checks whether optional engines are installed. API keys are checked only for **presence** in the process environment; their values and `.env` are never read.
+- **Copy** buttons write the shown command to your clipboard. The plugin never runs these commands.
 
 **Desktop control**
 - The overlay is a transparent, always-on-top, full-screen window. Clicks pass through wherever nothing is drawn.
