@@ -118,4 +118,4 @@ cd overlay && npm ci && node dev/mock-server.js   # scripted demo server, no Her
 
 ## License
 
-TBD: a license will be added before the repository goes public.
+[MIT](LICENSE)

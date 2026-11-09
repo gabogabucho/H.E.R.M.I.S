@@ -85,7 +85,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [ ] Tests del protocolo y de las tools
 - [x] README con instalación y la disclosure completa (procesos en segundo plano, red, shell)
 - [x] Entrada del catálogo lista en `docs/catalog/hermis.yaml` (falta pinear el SHA final)
-- [ ] Elegir licencia (`LICENSE`) antes de hacer público el repo
+- [x] Licencia: MIT (`LICENSE`)
 - [ ] Decidir: `npx electron` o build en GitHub Actions con atestación
 - [ ] Grabar tomas de la demo (varias)
 
