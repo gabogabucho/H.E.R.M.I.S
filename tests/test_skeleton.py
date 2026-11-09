@@ -405,9 +405,7 @@ class SkeletonTest(unittest.TestCase):
                 ap_on = json.loads(tools.autopilot({"state": "on"}))
                 self.assertTrue(ap_on["ok"])
                 self.assertEqual(ap_on["delivered"], 1)
-                # Entrar al modo limpia primero lo que quedó de una sesión anterior.
-                cleared = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
-                self.assertEqual(cleared, {"type": "close", "id": "all"})
+                # Venía apagado: entrar al modo no borra nada.
                 mode_on = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(mode_on, {"type": "mode", "autopilot": True})
 
@@ -740,6 +738,16 @@ class AutostartTest(unittest.TestCase):
             tools.autopilot({"state": "on"})
         self.assertEqual(ws_server.load_state()["surfaces"], {})
         self.assertEqual(sent[0], {"type": "close", "id": "all"})
+
+    def test_drawing_then_entering_autopilot_keeps_the_new_surface(self) -> None:
+        # Comentario del PR #18: el modelo puede dibujar y después activar el modo
+        # en el mismo turno; activarlo no puede borrar lo recién dibujado.
+        sent: list[dict] = []
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]):
+            drawn = json.loads(tools.render_surface({"surface": "document", "data": {"title": "Recién"}}))
+            tools.autopilot({"state": "on"})
+        self.assertIn(drawn["id"], ws_server.load_state()["surfaces"])
+        self.assertNotIn({"type": "close", "id": "all"}, sent)
 
     def test_launched_app_window_is_brought_to_front(self) -> None:
         # El gateway corre en segundo plano: sin esto las apps abren detrás o minimizadas.
