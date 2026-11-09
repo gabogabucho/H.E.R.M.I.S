@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -67,8 +68,15 @@ _SW_RESTORE = 9
 _SW_MAXIMIZE = 3
 _SW_MINIMIZE = 6
 _SW_SHOW = 5
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
 _SWP_NOZORDER = 0x0004
 _SWP_SHOWWINDOW = 0x0040
+_HWND_TOPMOST = -1
+_HWND_NOTOPMOST = -2
+# Cuánto esperamos a que aparezca la ventana de una app recién lanzada.
+_LAUNCH_WAIT_S = 5.0
+_LAUNCH_POLL_S = 0.25
 _SPI_GETWORKAREA = 0x0030
 _GWL_EXSTYLE = -20
 _WS_EX_TOOLWINDOW = 0x00000080
@@ -163,6 +171,74 @@ def list_open_windows() -> list[dict[str, Any]]:
     return results
 
 
+def _bring_to_front(hwnd: int) -> bool:
+    """Trae una ventana al frente aunque el llamador corra en segundo plano.
+
+    Windows rechaza en silencio ``SetForegroundWindow`` desde un proceso que no
+    tiene el foco (el gateway de Hermes). Engancharse a la entrada del hilo de la
+    ventana activa lo habilita; el salto TOPMOST → NOTOPMOST sube la ventana en el
+    orden Z aunque Windows no ceda el foco. No simula teclas (Alt abre menús).
+    Devuelve True si la ventana quedó como ventana activa.
+    """
+    if not is_windows():
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        target = wintypes.HWND(hwnd)
+        user32.ShowWindow(target, _SW_RESTORE if user32.IsIconic(target) else _SW_SHOW)
+        if user32.SetForegroundWindow(target) and user32.GetForegroundWindow() == hwnd:
+            return True
+        foreground = user32.GetForegroundWindow()
+        fg_thread = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+        own_thread = kernel32.GetCurrentThreadId()
+        attached = bool(fg_thread and fg_thread != own_thread
+                        and user32.AttachThreadInput(own_thread, fg_thread, True))
+        try:
+            flags = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_SHOWWINDOW
+            user32.SetWindowPos(target, wintypes.HWND(_HWND_TOPMOST), 0, 0, 0, 0, flags)
+            user32.SetWindowPos(target, wintypes.HWND(_HWND_NOTOPMOST), 0, 0, 0, 0, flags)
+            user32.BringWindowToTop(target)
+            user32.SetForegroundWindow(target)
+        finally:
+            if attached:
+                user32.AttachThreadInput(own_thread, fg_thread, False)
+        return user32.GetForegroundWindow() == hwnd
+    except Exception:
+        return False
+
+
+def _window_snapshot() -> dict[int, str]:
+    """``{hwnd: título}`` de las ventanas de usuario visibles ahora."""
+    return {w["hwnd"]: w["title"] for w in list_open_windows()}
+
+
+def _bring_launched_window_to_front(before: dict[int, str], app_name: str) -> dict[str, Any]:
+    """Busca la ventana de una app recién lanzada y la trae al frente.
+
+    No se busca por PID: la Calculadora (UWP) vive en ApplicationFrameHost y
+    Chrome suele reusar su proceso. Orden: ventana nueva → ventana cuyo título
+    cambió (pestaña nueva en un Chrome abierto) → título que contiene el nombre.
+    """
+    deadline = time.monotonic() + _LAUNCH_WAIT_S
+    after = before
+    while time.monotonic() < deadline:
+        time.sleep(_LAUNCH_POLL_S)
+        after = _window_snapshot()
+        new = [h for h in after if h not in before]
+        if new:
+            hwnd = new[-1]
+            return {"focused": _bring_to_front(hwnd), "window": after[hwnd]}
+    changed = [h for h, title in after.items() if h in before and before[h] != title]
+    name = app_name.strip().lower()
+    named = [h for h, title in after.items() if name and name in title.lower()]
+    for candidates in (changed, named):
+        if candidates:
+            hwnd = candidates[0]
+            return {"focused": _bring_to_front(hwnd), "window": after[hwnd]}
+    return {"focused": False}
+
+
 def _move_window(hwnd: int, x: int, y: int, width: int, height: int) -> bool:
     if not is_windows():
         return False
@@ -178,7 +254,7 @@ def _move_window(hwnd: int, x: int, y: int, width: int, height: int) -> bool:
             int(height),
             _SWP_NOZORDER | _SWP_SHOWWINDOW,
         )
-        user32.SetForegroundWindow(wintypes.HWND(hwnd))
+        _bring_to_front(hwnd)
         return bool(ok)
     except Exception:
         return False
@@ -187,16 +263,8 @@ def _move_window(hwnd: int, x: int, y: int, width: int, height: int) -> bool:
 def _focus_window(hwnd: int) -> bool:
     if not is_windows():
         return False
-    try:
-        user32 = ctypes.windll.user32
-        if user32.IsIconic(wintypes.HWND(hwnd)):
-            user32.ShowWindow(wintypes.HWND(hwnd), _SW_RESTORE)
-        else:
-            user32.ShowWindow(wintypes.HWND(hwnd), _SW_SHOW)
-        user32.SetForegroundWindow(wintypes.HWND(hwnd))
-        return True
-    except Exception:
-        return False
+    _bring_to_front(hwnd)
+    return True
 
 
 def _maximize_window(hwnd: int) -> bool:
@@ -205,7 +273,7 @@ def _maximize_window(hwnd: int) -> bool:
     try:
         user32 = ctypes.windll.user32
         user32.ShowWindow(wintypes.HWND(hwnd), _SW_MAXIMIZE)
-        user32.SetForegroundWindow(wintypes.HWND(hwnd))
+        _bring_to_front(hwnd)
         return True
     except Exception:
         return False
@@ -403,6 +471,7 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
         subprocess.DETACHED_PROCESS
         | subprocess.CREATE_NEW_PROCESS_GROUP
     )
+    before = _window_snapshot()
     try:
         proc = subprocess.Popen(
             [exe, *safe_args],
@@ -411,12 +480,15 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
             stderr=subprocess.DEVNULL,
             creationflags=creationflags,
         )
-        return {
+        out: dict[str, Any] = {
             "ok": True,
             "app": app_name,
             "executable": exe,
             "pid": proc.pid,
         }
+        # El gateway corre en segundo plano: sin esto la app abre detrás.
+        out.update(_bring_launched_window_to_front(before, app_name))
+        return out
     except Exception as exc:
         return {
             "ok": False,
