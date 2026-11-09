@@ -67,7 +67,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 4 · Lun 9/11 — El orbe vivo + demo completa
 
-- [ ] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → intro
+- [x] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → intro (#11, #14; falta probarlo con el gateway real)
 - [x] Hooks `pre/post_tool_call` → actuando; turnos → pensando / hablando
 - [x] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
 - [ ] Pulir la animación de la transformación barra ↔ orbe
@@ -83,7 +83,9 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 - [ ] Manejo de errores: el overlay se cae → el plugin reconecta; las tools siempre devuelven JSON
 - [ ] Tests del protocolo y de las tools
-- [ ] README con instalación y la disclosure completa (procesos en segundo plano, red, shell)
+- [x] README con instalación y la disclosure completa (procesos en segundo plano, red, shell)
+- [x] Entrada del catálogo lista en `docs/catalog/hermis.yaml` (falta pinear el SHA final)
+- [x] Licencia: MIT (`LICENSE`)
 - [ ] Decidir: `npx electron` o build en GitHub Actions con atestación
 - [ ] Grabar tomas de la demo (varias)
 
@@ -95,7 +97,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 - [ ] Hacer el repo **público**
 - [ ] `hermes plugins validate . --install-deps` en el commit final y SHA de 40 caracteres
-- [ ] PR a `NousResearch/hermes-agent` con `plugin-catalog/hermis.yaml` (borrador en `docs/RESEARCH.md`)
+- [ ] PR a `NousResearch/hermes-agent` con `plugin-catalog/hermis.yaml` (copiar `docs/catalog/hermis.yaml` con el SHA final)
 - [ ] Edición final del video (menos de 90 segundos)
 - [ ] Post en X etiquetando a @NousResearch
 - [ ] Formulario: https://form.typeform.com/to/FwJLvOln
