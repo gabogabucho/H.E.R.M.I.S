@@ -17,7 +17,8 @@ description: >-
   cdnjs/jsdelivr/unpkg only; the overlay connects to the local Hermes gateway
   (control pipe for a short-lived session ticket under your identity, then the
   loopback /api/ws) and only listens to voice.status and wake.detected; moves, resizes and focuses real windows via Win32
-  (user32) and launches apps without a shell; copies html/svg blocks from
+  (user32) and launches apps without a shell (Store apps via a read-only
+  powershell Get-StartApps lookup + explorer.exe shell:AppsFolder); copies html/svg blocks from
   replies to the overlay via post_llm_call while Autopilot is on; the setup
   checklist reads config.yaml read-only and copies commands to the clipboard on
   click (never runs them); writes

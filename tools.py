@@ -166,6 +166,9 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     st = ws_server.load_state()
     st["autopilot"] = active
     first_run = active and not st.get("onboarded")
+    # Entrar o salir del modo arranca con el escritorio limpio: sin superficies de
+    # una sesión anterior (el modo pudo quedar activo si se cerró Hermes sin salir).
+    st["surfaces"] = {}
     if active:
         _refresh_windows_cache(st)
         if first_run:
@@ -173,14 +176,11 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
             st.setdefault("surfaces", {})[SETUP_ID] = _setup_entry()
             st["onboarded"] = True
     else:
-        st["surfaces"] = {}
         st.pop("windows", None)
     ws_server.save_state(st)
     orb_lifecycle.reset()
-    if not active:
-        # Salir del modo limpia la pantalla: el estado ya quedó vacío y el
-        # overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
-        _safe_broadcast({"type": "close", "id": "all"})
+    # El overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
+    _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
     if first_run:
         entry = st["surfaces"][SETUP_ID]
@@ -374,8 +374,13 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
             "surface='artifact' (data={kind: 'html'|'svg', title, content}).\n"
             "- Contexto / Context: pedidos como 'abre el tercero' o 'cierra eso' se resuelven con lo que ya está en pantalla "
             "(listado abajo) y con `close_surface`, sin volver a consultar nada.\n"
-            "- Ventanas / Windows: `layout_windows` acomoda, enfoca o maximiza ventanas reales del escritorio y `launch_app` "
-            "abre aplicaciones; para operar por dentro de una app, usa tus propias herramientas.\n"
+            "- Ventanas / Windows: para abrir, enfocar o acomodar apps usa SIEMPRE `launch_app` y `layout_windows`, "
+            "una llamada por acción; nunca terminal, execute_code ni el navegador para eso. `launch_app` abre "
+            "cualquier app del menú Inicio por su nombre (también las de la Microsoft Store). Para abrir una web, "
+            "`launch_app` con el navegador y la URL que haga falta como argumento. "
+            "Para dividir pantalla: `layout_windows` layout='split' con los nombres de las apps.\n"
+            "- Dentro de una app / Inside an app: para escribir o usar el teclado en una app ya abierta, usa tus "
+            "herramientas de computer use. Antes de ENVIAR un mensaje a otra persona, confirma el texto por voz.\n"
             "- Transparencia y tema / Opacity & theme: si el usuario pide subir/bajar la transparencia (opacidad) del fondo o cambiar entre modo claro y oscuro, "
             "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'} "
             "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."

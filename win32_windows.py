@@ -7,6 +7,7 @@ limpiamente con un mensaje claro fuera de Windows. Nunca usa ``shell=True``.
 from __future__ import annotations
 
 import ctypes
+import json
 from ctypes import wintypes
 import math
 import os
@@ -220,7 +221,11 @@ def _bring_launched_window_to_front(before: dict[int, str], app_name: str) -> di
     Chrome suele reusar su proceso. Orden: ventana nueva → ventana cuyo título
     cambió (pestaña nueva en un Chrome abierto) → título que contiene el nombre.
     """
-    deadline = time.monotonic() + _LAUNCH_WAIT_S
+    name = app_name.strip().lower()
+    # Si la app ya estaba abierta casi nunca aparece una ventana nueva: no hace
+    # falta esperar los 5 s enteros.
+    already_open = bool(name) and any(name in title.lower() for title in before.values())
+    deadline = time.monotonic() + (min(_LAUNCH_WAIT_S, 1.5) if already_open else _LAUNCH_WAIT_S)
     after = before
     while time.monotonic() < deadline:
         time.sleep(_LAUNCH_POLL_S)
@@ -230,9 +235,11 @@ def _bring_launched_window_to_front(before: dict[int, str], app_name: str) -> di
             hwnd = new[-1]
             return {"focused": _bring_to_front(hwnd), "window": after[hwnd]}
     changed = [h for h, title in after.items() if h in before and before[h] != title]
-    name = app_name.strip().lower()
     named = [h for h, title in after.items() if name and name in title.lower()]
-    for candidates in (changed, named):
+    named_changed = [h for h in named if h in changed]
+    # El nombre manda: un título que cambió en otra app (una pestaña que se
+    # actualiza sola) no le puede ganar a la ventana de la app pedida.
+    for candidates in (named_changed, named, changed):
         if candidates:
             hwnd = candidates[0]
             return {"focused": _bring_to_front(hwnd), "window": after[hwnd]}
@@ -451,8 +458,60 @@ def resolve_executable(app_name: str) -> str | None:
     return None
 
 
+_START_APPS_TTL_S = 600.0
+_start_apps_cache: tuple[float, list[tuple[str, str]]] | None = None
+
+
+def _start_apps() -> list[tuple[str, str]]:
+    """``[(nombre, AUMID)]`` del menú Inicio, incluidas las apps de la Microsoft Store.
+
+    Lista de solo lectura (``Get-StartApps``); tarda ~2 s, así que se cachea y solo
+    se usa cuando la app no tiene un ``.exe`` resoluble.
+    """
+    global _start_apps_cache
+    now = time.monotonic()
+    if _start_apps_cache is not None:
+        stamp, cached = _start_apps_cache
+        if now - stamp < (_START_APPS_TTL_S if cached else 60.0):
+            return cached
+    apps: list[tuple[str, str]] = []
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress"],
+            capture_output=True, text=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        raw = json.loads(out.stdout or "[]")
+        if isinstance(raw, dict):
+            raw = [raw]
+        apps = [(str(a["Name"]), str(a["AppID"])) for a in raw
+                if isinstance(a, dict) and a.get("Name") and a.get("AppID")]
+    except Exception:
+        apps = []
+    _start_apps_cache = (now, apps)
+    return apps
+
+
+def find_start_app(app_name: str) -> tuple[str, str] | None:
+    """Busca una app del menú Inicio por nombre: exacto, después prefijo, después contiene."""
+    key = app_name.strip().lower()
+    if not key:
+        return None
+    apps = _start_apps()
+    for matches in (lambda n: n == key, lambda n: n.startswith(key), lambda n: key in n):
+        for name, aumid in apps:
+            if matches(name.lower()):
+                return name, aumid
+    return None
+
+
 def launch_application(app_name: str, args: list[str] | None = None) -> dict[str, Any]:
-    """Lanza una aplicación de escritorio sin usar ``shell=True``."""
+    """Lanza una aplicación de escritorio sin usar ``shell=True``.
+
+    Primero un ``.exe`` resoluble; si no hay, una app del menú Inicio (las de la
+    Microsoft Store, como WhatsApp, no tienen ``.exe`` en PATH ni en App Paths).
+    """
     if not is_windows():
         return {
             "ok": False,
@@ -460,7 +519,8 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
             "message": "launch_app requiere Windows",
         }
     exe = resolve_executable(app_name)
-    if not exe:
+    start_app = None if exe else find_start_app(app_name)
+    if not exe and not start_app:
         return {
             "ok": False,
             "error": "app_not_found",
@@ -471,10 +531,15 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
         subprocess.DETACHED_PROCESS
         | subprocess.CREATE_NEW_PROCESS_GROUP
     )
+    if exe:
+        command = [exe, *safe_args]
+    else:
+        # El AUMID sale de la lista del sistema, nunca del texto del usuario.
+        command = ["explorer.exe", f"shell:AppsFolder\\{start_app[1]}"]
     before = _window_snapshot()
     try:
         proc = subprocess.Popen(
-            [exe, *safe_args],
+            command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -483,11 +548,16 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
         out: dict[str, Any] = {
             "ok": True,
             "app": app_name,
-            "executable": exe,
+            "executable": exe or "explorer.exe",
             "pid": proc.pid,
         }
+        if start_app:
+            out["store_app"] = start_app[0]
+            if safe_args:
+                out["note"] = "Las apps del menú Inicio se abren sin argumentos."
         # El gateway corre en segundo plano: sin esto la app abre detrás.
-        out.update(_bring_launched_window_to_front(before, app_name))
+        match_name = start_app[0] if start_app else app_name
+        out.update(_bring_launched_window_to_front(before, match_name))
         return out
     except Exception as exc:
         return {

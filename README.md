@@ -81,7 +81,7 @@ Everything the plugin does outside of plain Python tool calls:
 **Desktop control**
 - The overlay is a transparent, always-on-top, full-screen window. Clicks pass through wherever nothing is drawn.
 - `layout_windows` moves, resizes, focuses and minimizes **your real windows** via `user32`. Windows running as administrator cannot be moved (Windows UIPI).
-- `launch_app` resolves apps through `PATH`, the `App Paths` registry key (read-only) and `System32`.
+- `launch_app` resolves apps through `PATH`, the `App Paths` registry key (read-only) and `System32`. Apps without an `.exe` there (Microsoft Store apps such as WhatsApp) are looked up in the Start menu list with `powershell.exe Get-StartApps` (read-only, cached for 10 minutes) and opened with `explorer.exe shell:AppsFolder\<app id>`; the id always comes from that system list, never from the request text.
 
 **Agent context**
 - `pre_llm_call` adds the Autopilot instructions and a cached list of open surfaces and windows to the turn. It never captures the screen.
