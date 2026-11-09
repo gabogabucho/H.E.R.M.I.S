@@ -63,9 +63,11 @@ class SetupChecksTest(unittest.TestCase):
         ready = self.run_with(config, env={"ELEVENLABS_API_KEY": "secret-value"})
         self.assertEqual(ready["stt"]["status"], "ok")
 
-    def test_auto_tts_off_is_flagged_because_hermes_stays_silent(self):
+    def test_auto_tts_off_points_to_the_desktop_read_aloud_toggle(self):
+        # El Desktop guarda "leer en voz alta" localmente; la config solo no alcanza.
         items = self.run_with({"voice": {"auto_tts": False}, "tts": {"provider": "edge"}})
-        self.assertEqual(items["tts"]["status"], "warn")
+        self.assertEqual(items["tts"]["status"], "info")
+        self.assertIn("Read replies aloud", items["tts"]["detail"])
         self.assertIn("hermes config set voice.auto_tts true", items["tts"]["fix"])
 
     def test_configured_machine_is_all_ok(self):

@@ -108,9 +108,12 @@ def _check_tts(cfg: dict[str, Any] | None) -> dict[str, Any]:
     label = "Voz de respuesta (TTS)"
     provider = str(_get(cfg, "tts.provider") or "edge")
     if cfg is not None and _get(cfg, "voice.auto_tts") is False:
-        # Sin esto Hermes transcribe y responde, pero nunca habla (y no da error).
-        return _item("tts", label, "warn", "Las respuestas no se leen en voz alta (voice.auto_tts está apagado).",
-                     f"hermes config set voice.auto_tts true; {RESTART}")
+        # En el Desktop "leer en voz alta" es una preferencia local (solo se copia de
+        # voice.auto_tts la primera vez): sin el toggle, la charla de voz solo transcribe.
+        return _item("tts", label, "info",
+                     "Si Hermes te contesta solo con texto: en el Desktop pasá el mouse sobre el micrófono y "
+                     "activá 'Read replies aloud'. voice.auto_tts solo cubre la terminal y la mensajería.",
+                     "hermes config set voice.auto_tts true")
     if provider == "elevenlabs":
         if not _has_module("elevenlabs"):
             return _item("tts", label, "warn", "ElevenLabs elegido pero falta su paquete.",
