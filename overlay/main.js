@@ -17,6 +17,8 @@ let reconnectTimer = null;
 let helloTimer = null;
 let lastEndpoint = null;
 let fileWatcher = null;
+let gatewayClient = null;
+const { createGatewayClient } = require('./gateway_client');
 
 function dataDirOverride() {
   const i = process.argv.indexOf('--data-dir');
@@ -64,6 +66,19 @@ function forward(msg) {
     : (msg && msg.type) || 'desconocido';
   console.log('[overlay] plugin → renderer:', label);
   if (win && !win.isDestroyed()) win.webContents.send('hermis:message', msg);
+}
+
+function sendToPlugin(msg) {
+  if (sock && authed && sock.readyState === WebSocket.OPEN) {
+    try {
+      sock.send(JSON.stringify(msg));
+      return true;
+    } catch (e) {
+      console.warn('[overlay] error enviando al plugin ws:', e.message);
+      return false;
+    }
+  }
+  return false;
 }
 
 function scheduleReconnect() {
@@ -134,6 +149,9 @@ function connect() {
     console.log(`[overlay] ws cerrado (código ${code})`);
     sendStatus(`closed:${code}`);
     sock = null;
+    authed = false;
+    clearTimeout(helloTimer);
+    helloTimer = null;
     if (code === 4401) lastEndpoint = null;
     scheduleReconnect();
   });
@@ -264,6 +282,21 @@ if (!app.requestSingleInstanceLock()) {
     watchOverlayFile();
     watchRendererFiles();
     connect();
+  });
+  app.whenReady().then(() => {
+    gatewayClient = createGatewayClient({
+      readOverlayInfo,
+      hermesHome: defaultHermesHome(),
+      sendToPlugin,
+      forwardToRenderer: forward,
+    });
+    gatewayClient.start();
+  });
+  app.on('before-quit', () => {
+    if (gatewayClient) {
+      gatewayClient.stop();
+      gatewayClient = null;
+    }
   });
   app.on('window-all-closed', () => app.quit());
 }

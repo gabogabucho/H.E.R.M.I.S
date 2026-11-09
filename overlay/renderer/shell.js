@@ -602,6 +602,7 @@ class LumenShell extends HTMLElement {
   constructor() {
     super();
     this.windows = new Map();
+    this._introPlaying = false;
     this._interactive = false;
     this.autopilot = false;
     this._morphAnims = [];
@@ -647,6 +648,10 @@ class LumenShell extends HTMLElement {
           updatePanelStyle({ opacity: msg.opacity, theme: msg.theme });
         }
         this.setAutopilot(!!msg.autopilot);
+        break;
+      case 'intro':
+      case 'wake':
+        this._handleIntro();
         break;
       case 'style':
         updatePanelStyle({ opacity: msg.opacity, theme: msg.theme });
@@ -797,6 +802,21 @@ class LumenShell extends HTMLElement {
     this.windows.delete(id);
   }
 
+  _handleIntro() {
+    if (!this.autopilot) return;
+    const orb = this.querySelector('lumen-orb');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (orb) {
+      if (reduced) {
+        orb.classList.add('autopilot');
+      } else if (!this._introPlaying) {
+        this._cancelMorph();
+        this._playIntro(orb);
+      }
+    }
+    this.setShellState('listening');
+  }
+
   setShellState(state) {
     const orb = this.querySelector('lumen-orb');
     if (orb && typeof state === 'string') orb.state = state;
@@ -848,6 +868,11 @@ class LumenShell extends HTMLElement {
       try { anim.cancel(); } catch (e) { /* ya cancelada */ }
     }
     for (const t of this._morphTimers || []) clearTimeout(t);
+    this._introPlaying = false;
+    if (this.autopilot) {
+      const activeOrb = this.querySelector('lumen-orb');
+      if (activeOrb) activeOrb.classList.add('autopilot');
+    }
     this._morphAnims = [];
     this._morphTimers = [];
     const layer = this.querySelector('#morph-layer');
@@ -863,6 +888,8 @@ class LumenShell extends HTMLElement {
     const shape = layer.querySelector('.morph-shape');
     const label = layer.querySelector('.morph-bar-label');
     const text = layer.querySelector('.morph-text');
+    this._introPlaying = true;
+    orb.classList.remove('autopilot');
     text.textContent = INTRO_TEXT;
     layer.classList.remove('hidden');
 
@@ -898,7 +925,10 @@ class LumenShell extends HTMLElement {
       this._animate(veil, [{ opacity: 1 }, { opacity: 0 }], { duration: 550, fill: 'forwards', easing: 'ease-in' });
       this._animate(text, [{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards', easing: 'ease-in' });
     });
-    this._later(INTRO_MS + 850, () => layer.classList.add('hidden'));
+    this._later(INTRO_MS + 850, () => {
+      layer.classList.add('hidden');
+      this._introPlaying = false;
+    });
   }
 
   // Salida: el orbe se estira en barra y desaparece.

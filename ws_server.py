@@ -125,6 +125,37 @@ def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> Non
         _atomic_write_text(target, json.dumps(state, ensure_ascii=False))
 
 
+def _handle_client_message(raw: Any) -> None:
+    """Process incoming JSON messages from an authenticated overlay client."""
+    try:
+        msg = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(msg, dict):
+        return
+    msg_type = msg.get("type")
+    if msg_type == "voice.status":
+        with contextlib.suppress(Exception):
+            from . import orb_lifecycle
+
+            active = (
+                bool(msg.get("listening"))
+                if "listening" in msg
+                else (str(msg.get("state") or "").lower() in ("listening", "recording"))
+            )
+            orb_lifecycle.set_listening(active)
+    elif msg_type == "wake.detected":
+        with contextlib.suppress(Exception):
+            from . import orb_lifecycle
+
+            orb_lifecycle.set_listening(True)
+            if load_state().get("autopilot"):
+                phrase = msg.get("phrase")
+                if not isinstance(phrase, str) or not phrase.strip():
+                    phrase = "hey hermes"
+                broadcast({"type": "intro", "phrase": phrase})
+
+
 async def _handler(conn: Any) -> None:
     try:
         hello = json.loads(await asyncio.wait_for(conn.recv(), _HELLO_TIMEOUT_S))
@@ -172,7 +203,8 @@ async def _handler(conn: Any) -> None:
     with _lock:
         _clients.add(conn)
     try:
-        async for _ in conn:  # Día 1: el overlay no manda nada más
+        async for raw in conn:
+            _handle_client_message(raw)
             pass
     finally:
         with _lock:
