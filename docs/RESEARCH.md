@@ -184,6 +184,8 @@ Detalles que salen gratis con la arquitectura híbrida:
 
 ## Esquema de la entrada del catálogo — `plugin-catalog/hermis.yaml`
 
+> **Actualizado el 9/11:** la versión vigente está en [`docs/catalog/hermis.yaml`](catalog/hermis.yaml). El borrador de abajo es histórico: le faltan la tool `autopilot` y el hook `post_llm_call`.
+
 ```yaml
 name: hermis
 repo: https://github.com/gabogabucho/H.E.R.M.I.S
