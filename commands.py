@@ -7,20 +7,23 @@ from pathlib import Path
 
 from . import overlay_launcher, setup_checks, tools, ws_server
 
-USAGE = "Usage: /hermis [status|on|off|check|setup|tour|gestures on|off]"
+USAGE = "Usage: /hermis [status|on|off|check|setup|retry|tour|gestures on|off]"
 
 
 def handle(raw_args: str = "") -> str:
     """Return status, switch the mode, inspect local prerequisites, or show the setup checklist."""
     parts = raw_args.strip().lower().split()
     action = parts[0] if parts else "status"
-    if action not in {"status", "on", "off", "check", "setup", "tour", "gestures"}:
+    if action not in {"status", "on", "off", "check", "setup", "retry", "tour", "gestures"}:
         return USAGE
     if action == "gestures":
         if len(parts) != 2 or parts[1] not in ("on", "off"):
             return USAGE
     elif len(parts) > 1:
         return USAGE
+    if action == "retry":
+        note = overlay_launcher.ensure_overlay_running(retry=True)
+        return f"Overlay startup: {overlay_launcher.bootstrap_summary()}" + (f"\n{note}" if note else "")
     if action == "gestures":
         # Toggle opcional (apagado por defecto): persiste el flag y avisa al overlay.
         state = parts[1]
@@ -61,7 +64,8 @@ def handle(raw_args: str = "") -> str:
         f"Autopilot: {'on' if state.get('autopilot') else 'off'}",
         f"Surfaces: {len(state.get('surfaces') or {})}",
         f"Gestures: {'on' if state.get('gestures') else 'off'}",
-        "Overlay connection: not checked (read-only status).",
+        "Overlay connection: not checked across processes (local startup status below).",
+        f"Overlay startup: {overlay_launcher.bootstrap_summary()}",
     ]
     if action == "check":
         dependencies = Path(__file__).parent / "overlay" / "node_modules"

@@ -545,6 +545,8 @@ class AutostartTest(unittest.TestCase):
         overlay_launcher._pipeline_busy = False
         self.pipeline_calls: list[tuple] = []
         self.patches = [
+            patch.object(overlay_launcher, "_launch_process", None),
+            patch.object(overlay_launcher, "_bootstrap", {"phase": "idle", "error": None, "started_at": 0}),
             patch.object(overlay_launcher.shutil, "which", lambda cmd: f"C:\\fake\\{cmd}.exe"),
             patch.object(overlay_launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "v22.12.0")),
             patch.object(overlay_launcher, "_overlay_dir", self.fake_overlay),

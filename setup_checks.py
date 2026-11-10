@@ -71,6 +71,12 @@ def _check_overlay() -> dict[str, Any]:
     if runtime["error"]:
         return _item("overlay", label, "warn", runtime["error"],
                      "winget install OpenJS.NodeJS.LTS")
+    startup = overlay_launcher.bootstrap_status()
+    if startup["phase"] == "failed":
+        return _item("overlay", label, "warn", overlay_launcher.bootstrap_summary(),
+                     "/hermis retry" if startup["retryable"] else None)
+    if startup["phase"] in {"installing", "starting", "disabled"}:
+        return _item("overlay", label, "info", overlay_launcher.bootstrap_summary())
     if not (OVERLAY_DIR / "node_modules").is_dir():
         return _item("overlay", label, "warn",
                      "Faltan las dependencias del overlay (se instalan solas al activar el modo, o ahora).",

@@ -17,7 +17,7 @@ The agent never sends HTML for its own surfaces, only data. The overlay decides 
 | **Artifacts** | With Autopilot on, ```` ```html ```` and ```` ```svg ```` blocks in Hermes' replies are copied to the overlay as sandboxed artifact surfaces. |
 | **Windows** | `layout_windows` splits, tiles (`grid`), maximizes, focuses or minimizes others on real Windows windows through Win32. `launch_app` finds and opens desktop apps. |
 | **Living orb** | The orb shows listening from Hermes' voice events (`voice.status`, `wake.detected` on the local gateway) and thinking / acting from Hermes' own turn and tool hooks. |
-| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist), `/hermis tour` (replay the welcome), `/hermis gestures on|off`. |
+| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist), `/hermis retry` (retry overlay startup without changing mode or surfaces), `/hermis tour` (replay the welcome), `/hermis gestures on|off`. |
 | **Welcome** | The first time Autopilot turns on, Hermes introduces the mode by voice in a couple of sentences and the overlay shows a **quick guide**: example requests and what each camera gesture does. It happens once; replay it with `/hermis tour`. |
 | **Onboarding** | If something is missing, the first run also shows a setup checklist (overlay, speech-to-text, its language, text-to-speech, wake word, computer-use approvals, camera gestures). Every missing step comes with the exact command and a **Copy** button; nothing is installed or changed for you. Open it any time with `/hermis setup`. |
 
@@ -55,6 +55,16 @@ The first time Autopilot turns on, the plugin runs `npm ci` in `overlay/` (this 
 `/hermis check`, the setup checklist and automatic launch use the same runtime check: Node and npm must be on `PATH`, and `node --version` must report a compatible stable version within five seconds. An unsupported or unverifiable version prevents automatic installation/launch; it does not install or upgrade Node for you. After installing Node, restart the Hermes gateway so it sees the updated `PATH`. A compatible runtime is not proof that Electron or voice is connected.
 
 ## Configuration
+
+### Recovering overlay startup
+
+Use `/hermis status` or `/hermis check` to inspect local bootstrap progress: `installing`, `starting`, `failed` or `connected`. Starting a process is not a successful connection. After 30 seconds without an observed local overlay connection, diagnostics report `startup_timeout`; they do not kill the process. Setup also displays active startup or failure details. Diagnostics are snapshots: refresh setup or run the command again to update them.
+
+If startup failed, run `/hermis retry`. This retries the overlay without toggling Autopilot, clearing surfaces or consuming the welcome. An active install or live npm wrapper in this Hermes process blocks duplicate retries. A failed install releases its local cooldown; a failed launch can reinstall pinned dependencies on explicit retry. No dependency folders need to be deleted manually. `HERMIS_OVERLAY_AUTOSTART=0` also disables retry.
+
+Failure details use fixed error codes and numeric exit codes, not raw npm output, exception messages or session tokens. `overlay.log` remains a separate troubleshooting log; review it privately before sharing it.
+
+**Scope:** this status and retry guard are process-local. A connection owned by another Hermes process is not certified here. This does not add a cross-process install lock or certify cleanup of npm child processes after timeout. Use one Hermes plugin host for installation/recovery; multi-host exclusion and clean Windows lifecycle verification remain release work. A live wrapper with no connection is deliberately not killed or duplicated; close it intentionally before retrying. Do not repeat `/hermis on` to recover startup: reactivating an already active mode retains its existing surface-clearing behavior.
 
 | Variable | Default | Effect |
 |---|---|---|

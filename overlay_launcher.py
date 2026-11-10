@@ -38,6 +38,7 @@ logger = logging.getLogger("hermis")
 
 _RELAUNCH_COOLDOWN_S = 90
 _INSTALL_TIMEOUT_S = 300
+_STARTUP_TIMEOUT_S = 30
 _LAUNCH_FILE = "overlay.launch"
 _LOG_FILE = "overlay.log"
 MIN_NODE_VERSION = (22, 12, 0)
@@ -48,6 +49,76 @@ _overlay_dir = Path(__file__).parent / "overlay"
 _launch_lock = threading.Lock()
 _last_launch: float | None = None
 _pipeline_busy = False
+_launch_process: subprocess.Popen | None = None
+_bootstrap: dict[str, Any] = {"phase": "idle", "error": None, "started_at": 0}
+_ERROR_DETAILS = {
+    "install_failed": "La instalación falló. Revisa la conexión a npm y vuelve a intentar.",
+    "install_timeout": "La instalación excedió el tiempo disponible. Revisa la conexión antes de reintentar.",
+    "install_denied": "No se pudo ejecutar la instalación. Revisa los permisos de Node/npm y del plugin.",
+    "launch_failed": "No se pudo iniciar Electron. Revisa los permisos y vuelve a intentar.",
+    "launch_exited": "El proceso de inicio terminó con un error. El reintento reinstala las dependencias.",
+    "startup_timeout": "No se verificó una conexión del overlay dentro de 30 segundos.",
+    "process_unknown": "No se pudo verificar si el proceso de inicio sigue activo. No se iniciará otro.",
+    "storage_failed": "No se pudo escribir en el directorio de datos del plugin. Revisa sus permisos.",
+    "worker_failed": "No se pudo iniciar el trabajo en segundo plano. Vuelve a intentar.",
+}
+
+
+def _process_running(process: subprocess.Popen | None) -> bool:
+    if process is None:
+        return False
+    try:
+        return process.poll() is None
+    except OSError:
+        return True  # Unknown ownership is not permission to start a duplicate.
+
+
+def bootstrap_status() -> dict[str, Any]:
+    """Return a read-only local snapshot; a started process is not a connection."""
+    if ws_server.overlay_connected():
+        return {"phase": "connected", "error": None, "detail": "Overlay conectado en este proceso.", "retryable": False}
+    if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
+        return {"phase": "disabled", "error": None, "detail": "Inicio automático desactivado por HERMIS_OVERLAY_AUTOSTART=0.", "retryable": False}
+    with _launch_lock:
+        status = dict(_bootstrap)
+        process, busy = _launch_process, _pipeline_busy
+    if status["phase"] == "starting":
+        try:
+            code = process.poll() if process is not None else None
+        except OSError:
+            status.update(phase="failed", error="process_unknown")
+        else:
+            if code not in (None, 0):
+                status.update(phase="failed", error="launch_exited", exit_code=code)
+            elif time.monotonic() - status["started_at"] >= _STARTUP_TIMEOUT_S:
+                status.update(phase="failed", error="startup_timeout")
+    status.pop("started_at", None)
+    status["detail"] = _ERROR_DETAILS.get(status["error"], "Conexión no verificada en este proceso.")
+    running = _process_running(process)
+    status["retryable"] = not busy and not running and status["phase"] in {"idle", "failed"}
+    if status["phase"] == "failed" and running:
+        status["detail"] += " El proceso sigue activo o no se pudo verificar su salida; no se iniciará otro."
+    elif status["phase"] == "failed" and status["retryable"]:
+        status["detail"] += " Vuelve a intentar con /hermis retry."
+    return status
+
+
+def bootstrap_summary() -> str:
+    status = bootstrap_status()
+    code = f" ({status['error']})" if status["error"] else ""
+    exit_code = f" [exit {status['exit_code']}]" if "exit_code" in status else ""
+    return f"{status['phase']}{code}{exit_code}: {status['detail']}"
+
+
+def _bootstrap_failed(code: str, data_dir: Path, exit_code: int | None = None) -> None:
+    global _bootstrap, _last_launch
+    with _launch_lock:
+        _bootstrap = {"phase": "failed", "error": code, "started_at": 0}
+        if exit_code is not None:
+            _bootstrap["exit_code"] = exit_code
+        _last_launch = None
+        with contextlib.suppress(OSError):
+            (data_dir / _LAUNCH_FILE).unlink(missing_ok=True)
 
 
 def runtime_status() -> dict[str, Any]:
@@ -151,7 +222,7 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
     proceso plugin muere a mitad del ``npm ci``, el próximo intento repite la
     instalación (sigue sin haber ``node_modules``).
     """
-    global _pipeline_busy
+    global _pipeline_busy, _launch_process, _bootstrap
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         with open(data_dir / _LOG_FILE, "ab") as log:
@@ -163,32 +234,45 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
                     if result.returncode != 0:
                         log.write(f"\n[hermis] npm ci failed with exit code {result.returncode}\n"
                                   .encode("utf-8", "replace"))
+                        _bootstrap_failed("install_failed", data_dir, result.returncode)
                         return
                     _write_deps_marker(overlay_path)
                 except subprocess.TimeoutExpired:
                     log.write(b"\n[hermis] npm ci tardo demasiado; intento cancelado\n")
+                    _bootstrap_failed("install_timeout", data_dir)
                     return
                 except Exception as exc:
                     log.write(f"\n[hermis] npm ci fallo: {exc}\n".encode("utf-8", "replace"))
+                    _bootstrap_failed("install_denied", data_dir)
                     return
-            subprocess.Popen([npm, "start", "--", "--data-dir", str(data_dir)],
-                             cwd=str(overlay_path), stdin=subprocess.DEVNULL,
-                             stdout=log, stderr=subprocess.STDOUT, **_detach_kwargs())
-    except Exception as exc:
-        logger.warning("no se pudo abrir el overlay: %s", exc)
+            try:
+                process = subprocess.Popen([npm, "start", "--", "--data-dir", str(data_dir)],
+                                           cwd=str(overlay_path), stdin=subprocess.DEVNULL,
+                                           stdout=log, stderr=subprocess.STDOUT, **_detach_kwargs())
+            except Exception:
+                _bootstrap_failed("launch_failed", data_dir)
+                return
+            with _launch_lock:
+                _launch_process = process
+                _bootstrap = {"phase": "starting", "error": None, "started_at": time.monotonic()}
+    except Exception:
+        _bootstrap_failed("storage_failed", data_dir)
     finally:
         with _launch_lock:
             _pipeline_busy = False
 
 
-def ensure_overlay_running() -> str | None:
+def ensure_overlay_running(*, retry: bool = False) -> str | None:
     """Abre el overlay Electron si corresponde; devuelve la note de la tool.
 
     Devuelve ``None`` cuando no hay nada que avisar: env desactivado, throttle
     activo (se lanzó hace menos de 90 s) o pipeline en curso.
     """
-    global _last_launch, _pipeline_busy
+    global _last_launch, _pipeline_busy, _bootstrap, _launch_process
     if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
+        return None
+    snapshot = bootstrap_status()
+    if snapshot["phase"] == "connected":
         return None
     runtime = runtime_status()
     if runtime["error"]:
@@ -197,25 +281,39 @@ def ensure_overlay_running() -> str | None:
     data_dir = ws_server.data_dir()
     now = time.time()
     with _launch_lock:
-        if _pipeline_busy or _recent_launch(now, data_dir):
+        if _pipeline_busy or _process_running(_launch_process):
+            return None
+        if retry and snapshot["phase"] == "failed" and snapshot["retryable"]:
+            _last_launch = None
+            with contextlib.suppress(OSError):
+                (data_dir / _LAUNCH_FILE).unlink(missing_ok=True)
+        if _recent_launch(now, data_dir):
             return None
         _last_launch = now
         _pipeline_busy = True
+        _launch_process = None
+        _bootstrap = {"phase": "installing", "error": None, "started_at": time.monotonic()}
     updating = (_overlay_dir / "node_modules").exists()
-    installing = needs_install(_overlay_dir)
+    installing = needs_install(_overlay_dir) or (retry and snapshot["error"] in {"launch_failed", "launch_exited"})
+    with _launch_lock:
+        _bootstrap["phase"] = "installing" if installing else "starting"
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         (data_dir / _LAUNCH_FILE).write_text(
             json.dumps({"launched_at": now, "pid": os.getpid()}), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("no se pudo escribir %s: %s", _LAUNCH_FILE, exc)
+    except Exception:
+        _bootstrap_failed("storage_failed", data_dir)
+        with _launch_lock:
+            _pipeline_busy = False
+        return _ERROR_DETAILS["storage_failed"]
     try:
         threading.Thread(target=_launch_pipeline, args=(npm, _overlay_dir, data_dir, installing),
                          daemon=True, name="hermis-overlay-launch").start()
-    except Exception as exc:
+    except Exception:
+        _bootstrap_failed("worker_failed", data_dir)
         with _launch_lock:
             _pipeline_busy = False
-        return f"no se pudo abrir el overlay: {exc}"
+        return _ERROR_DETAILS["worker_failed"]
     if installing and updating:
         return "abriendo el overlay; actualiza sus dependencias (~1 min)"
     if installing:

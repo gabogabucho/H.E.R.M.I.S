@@ -41,7 +41,7 @@ class CommandTest(unittest.TestCase):
         registration = ctx.register_command.call_args
         self.assertIsNotNone(registration, "register() must expose /hermis")
         self.assertEqual(registration.kwargs["name"], "hermis")
-        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|tour|gestures on|off]")
+        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|retry|tour|gestures on|off]")
         return registration.kwargs["handler"](args)
 
     def test_command_status_is_read_only(self):
@@ -124,7 +124,7 @@ class CommandTest(unittest.TestCase):
     def test_command_rejects_unknown_or_extra_arguments(self):
         before = self.path.read_bytes()
         with patch.object(hermis.tools, "autopilot") as handler:
-            for args in ("unknown", "on extra", "off --force", "status extra", "check extra"):
+            for args in ("unknown", "on extra", "off --force", "status extra", "check extra", "retry extra"):
                 self.assertIn("Usage: /hermis", self.dispatch(args))
             handler.assert_not_called()
         self.assertEqual(self.path.read_bytes(), before)

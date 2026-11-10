@@ -28,6 +28,7 @@ class SetupChecksTest(unittest.TestCase):
             return name in modules
 
         with patch.object(checks, "_read_config", return_value=config), \
+             patch.object(hermis.overlay_launcher, "bootstrap_status", return_value={"phase": "idle"}), \
              patch.object(checks, "_has_module", side_effect=has_module), \
              patch.object(hermis.overlay_launcher.shutil, "which", lambda exe: f"C:\\bin\\{exe}" if node else None), \
              patch.object(hermis.overlay_launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "v22.12.0")), \
