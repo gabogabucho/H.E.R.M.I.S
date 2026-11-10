@@ -33,7 +33,7 @@ P2 can be developed after the P1 runtime decision is fixed. Each unit includes i
 
 ### P1 — Align and enforce supported runtimes [P0]
 
-**Evidence:** `README.md:26–31` advertises Node 20+, while `overlay/package.json:16–17` pins Electron 45.0.0 and its lockfile dependencies declare Node >=22.12.0 (`overlay/package-lock.json:26–27,44–45`). The launcher/checklist checks executable presence, not compatibility (`overlay_launcher.py:163–167`, `setup_checks.py:67–76`). This is a verified contract mismatch, not a reproduced Windows crash.
+**Evidence:** `README.md:26–31` advertises Node 20+, while `overlay/package.json:16–17` pins Electron 45.2.3 and its lockfile dependencies declare Node >=22.12.0 (`overlay/package-lock.json:26–27,44–45`). The launcher/checklist checks executable presence, not compatibility (`overlay_launcher.py:163–167`, `setup_checks.py:67–76`). This is a verified contract mismatch, not a reproduced Windows crash.
 
 **Change:** establish one supported Node/npm contract consistent with the chosen Electron dependency; enforce it before installation and report the detected version with an actionable remedy. Verify the advertised Hermes minimum rather than assuming every 0.22 build supports current gateway tickets/events.
 
