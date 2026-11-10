@@ -41,7 +41,7 @@ class CommandTest(unittest.TestCase):
         registration = ctx.register_command.call_args
         self.assertIsNotNone(registration, "register() must expose /hermis")
         self.assertEqual(registration.kwargs["name"], "hermis")
-        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|tour|gestures on|off]")
+        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|retry|tour|gestures on|off]")
         return registration.kwargs["handler"](args)
 
     def test_command_status_is_read_only(self):
@@ -86,10 +86,45 @@ class CommandTest(unittest.TestCase):
         launch.assert_not_called()
         self.assertEqual(self.path.read_bytes(), before)
 
+    def test_setup_preserves_welcome_until_first_activation(self):
+        for completed in (False, True):
+            with self.subTest(welcome_completed=completed):
+                state = {"autopilot": False, "seq": 0, "surfaces": {},
+                         "onboarded": completed, "gestures": False}
+                hermis.ws_server.save_state(state)
+                sent = []
+                checklist = {"items": [], "title": "Setup", "subtitle": "Checked"}
+                with patch.object(hermis.tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]), \
+                     patch.object(hermis.tools, "_maybe_start_overlay", return_value=None), \
+                     patch.object(hermis.tools, "_refresh_windows_cache"), \
+                     patch.object(hermis.setup_checks, "surface_data", return_value=checklist), \
+                     patch.object(hermis.setup_checks, "as_text", return_value="Setup checks"):
+                    for _ in range(2):
+                        self.assertIn("H.E.R.M.I.S setup", self.dispatch("setup"))
+                        stored = hermis.ws_server.load_state()
+                        self.assertEqual(stored.get("onboarded", False), completed)
+                        self.assertFalse(stored["autopilot"])
+                        self.assertFalse(stored.get("tour_pending", False))
+                        self.assertEqual(stored["surfaces"]["hermis-setup"]["data"], checklist)
+                        self.assertEqual(sent[-1]["surface"], "setup")
+                    sent.clear()
+                    self.assertIn("Autopilot: on", self.dispatch("on"))
+                    stored = hermis.ws_server.load_state()
+                    self.assertTrue(stored["onboarded"])
+                    self.assertEqual(bool(stored.get("tour_pending")), not completed)
+                    guides = [m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID]
+                    self.assertEqual(len(guides), 0 if completed else 1)
+                    hermis.welcome.post_llm_call()
+                    self.dispatch("off")
+                    sent.clear()
+                    self.dispatch("on")
+                    self.assertFalse([m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID])
+
+
     def test_command_rejects_unknown_or_extra_arguments(self):
         before = self.path.read_bytes()
         with patch.object(hermis.tools, "autopilot") as handler:
-            for args in ("unknown", "on extra", "off --force", "status extra", "check extra"):
+            for args in ("unknown", "on extra", "off --force", "status extra", "check extra", "retry extra"):
                 self.assertIn("Usage: /hermis", self.dispatch(args))
             handler.assert_not_called()
         self.assertEqual(self.path.read_bytes(), before)

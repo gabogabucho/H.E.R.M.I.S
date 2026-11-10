@@ -108,7 +108,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 ## Plan de respaldo
 
 - **Electron rechazado o frágil** → el orbe pasa a ser una Pet personalizada de Hermes y las superficies se muestran en un pane del Desktop Plugin SDK. Se pierde el morph y el dibujo sobre el escritorio, pero el modo sigue funcionando.
-- **Gmail falla** → IMAP, o datos de ejemplo para la superficie.
+- **Gmail falla en la demo** → se cambia el ejemplo del guion por otra fuente que Hermes ya tenga; el plugin no cambia (es una interfaz, no una fuente de datos).
 
 ## Fuera de alcance (para después del hackathon)
 

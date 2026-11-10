@@ -256,6 +256,12 @@ async def _handler(conn: Any) -> None:
                 overlay_launcher.reset_cooldown()
 
 
+def overlay_connected() -> bool:
+    """Inspect authenticated local overlay clients without probing another owner."""
+    with _lock:
+        return bool(_clients)
+
+
 _STATE["handler"] = _handler
 
 

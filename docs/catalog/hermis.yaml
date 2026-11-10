@@ -25,8 +25,8 @@ description: >-
   off by default, run only during Autopilot Mode, process frames locally by
   MediaPipe (never rendered, stored or sent; with no surfaces on screen they
   minimize/switch real windows, never close apps), show a green dot while the camera
-  is on, and download the gesture model once from storage.googleapis.com into
-  the plugin data dir; writes
+  is on, and download the gesture model once from storage.googleapis.com (pinned
+  version, SHA-256 verified) into the plugin data dir; writes
   state.json, overlay.json and overlay.log to the plugin data dir; Windows only.
   Autopilot Mode turns your Windows desktop into an agent OS: Hermes answers by
   voice, draws floating data surfaces over your real desktop (the agent sends
