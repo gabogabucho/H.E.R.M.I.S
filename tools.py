@@ -323,6 +323,19 @@ def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
 
 
 @_always_json
+def gesture_window(args: dict[str, Any], **kwargs: Any) -> str:
+    """Gesto sobre ventanas reales cuando no hay superficies en pantalla (no es una tool del agente)."""
+    if not isinstance(args, dict) or args.get("action") not in win32_windows.GESTURE_ACTIONS:
+        return _json({"ok": False, "error": "invalid_action",
+                      "message": f"action debe ser una de: {', '.join(win32_windows.GESTURE_ACTIONS)}"})
+    res = win32_windows.gesture_window(args["action"])
+    st = ws_server.load_state()
+    _refresh_windows_cache(st)  # Hermes ve qué quedó al frente en el próximo turno
+    ws_server.save_state(st)
+    return _json(res)
+
+
+@_always_json
 def set_gestures(args: dict[str, Any], **kwargs: Any) -> str:
     """Activa o desactiva los gestos con cámara (opcional, apagados por defecto).
 

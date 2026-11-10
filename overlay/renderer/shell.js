@@ -698,6 +698,7 @@ class LumenShell extends HTMLElement {
     this._gesturesHidden = false;
     this._frontWindowId = null;
     this._gestureRuntime = null;
+    this._desktopShown = false;  // ✋ sin superficies: escritorio real mostrado
   }
 
   connectedCallback() {
@@ -1077,8 +1078,24 @@ class LumenShell extends HTMLElement {
     }
   }
 
+  // Regla de los gestos: con superficies visibles actúan sobre ellas; sin ninguna
+  // (o con todas ocultas), sobre las ventanas reales. El plugin lo hace con Win32
+  // y solo minimiza, nunca cierra apps.
+  _surfacesVisible() {
+    return this.windows.size > 0 && !this._gesturesHidden;
+  }
+
+  _windowGesture(action, label) {
+    try { window.hermis.gestureWindow(action); } catch (e) { console.warn('[gestos] no se pudo avisar al plugin:', e.message); }
+    this._toast(label);
+  }
+
   // Foco local: deslizar trae la superficie anterior/siguiente al frente.
   _focusSurface(dir) {
+    if (!this._surfacesVisible()) {
+      this._windowGesture(dir > 0 ? 'next' : 'prev', dir > 0 ? '➡️ Ventana siguiente' : '⬅️ Ventana anterior');
+      return;
+    }
     const ids = Array.from(this.windows.keys());
     if (!ids.length) return;
     let idx = ids.indexOf(this._frontWindowId);
@@ -1098,19 +1115,26 @@ class LumenShell extends HTMLElement {
   // ✊: la de adelante se cierra localmente y también por el plugin
   // (gesture.close → close_surface), así Hermes sabe qué quedó en pantalla.
   _closeFrontSurface() {
-    let id = this._frontWindowId;
-    if (!id || !this.windows.has(id)) id = Array.from(this.windows.keys()).pop() || null;
-    if (!id) {
-      this._toast('✊ Nada que cerrar');
+    if (!this._surfacesVisible()) {
+      this._windowGesture('minimize', '✊ Minimizar ventana');
       return;
     }
+    let id = this._frontWindowId;
+    if (!id || !this.windows.has(id)) id = Array.from(this.windows.keys()).pop() || null;
+    if (!id) return;
     try { window.hermis.gestureClose(id); } catch (e) { console.warn('[gestos] no se pudo avisar al plugin:', e.message); }
     this.closeWindow(id);
     this._toast('✊ Cerrar');
   }
 
-  // ✋: toggle local de todas las superficies (notificaciones no, son efímeras).
+  // ✋: con superficies, toggle local de todas (notificaciones no, son efímeras);
+  // sin ninguna, escritorio real: minimiza todo y otra palma lo restaura.
   _toggleSurfacesHidden() {
+    if (this.windows.size === 0) {
+      this._desktopShown = !this._desktopShown;
+      this._windowGesture('desktop', this._desktopShown ? '✋ Escritorio' : '✋ Restaurar ventanas');
+      return;
+    }
     this._gesturesHidden = !this._gesturesHidden;
     const container = this.querySelector('#windows-container');
     if (container) container.classList.toggle('hidden', this._gesturesHidden);
