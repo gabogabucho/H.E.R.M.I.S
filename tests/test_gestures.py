@@ -9,7 +9,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "hermis_gestures_test"  # nombre propio: no pisa el paquete de los otros tests
@@ -189,6 +189,106 @@ class GesturesCommandTest(unittest.TestCase):
                 self.assertIn("Usage: /hermis", self.dispatch(args))
             broadcast.assert_not_called()
         self.assertEqual(self.path.read_bytes(), before)
+
+
+WIN = hermis.win32_windows
+
+
+class GestureWindowsTest(unittest.TestCase):
+    """Sin superficies, los gestos actúan sobre ventanas reales (Win32 simulado: nada se minimiza de verdad)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        override = patch.dict(STATE._STATE, data_dir_override=self.tmp.name)
+        override.start()
+        self.addCleanup(override.stop)
+        STATE.save_state({"autopilot": True, "seq": 0, "surfaces": {}, "onboarded": True})
+        # Orden Z de arriba hacia abajo, como lo devuelve EnumWindows.
+        self.windows = [{"hwnd": 10, "title": "Chrome"}, {"hwnd": 20, "title": "WhatsApp"}, {"hwnd": 30, "title": "Excel"}]
+        self.iconic: set[int] = set()
+        self.minimized: list[int] = []
+        self.fronted: list[int] = []
+        self.user32 = MagicMock()
+        self.user32.GetForegroundWindow.return_value = 20
+        self.user32.IsWindow.return_value = 1
+        fake_ctypes = MagicMock()
+        fake_ctypes.windll.user32 = self.user32
+        WIN._desktop_minimized = []
+        for target, value in (
+            ("is_windows", lambda: True),
+            ("ctypes", fake_ctypes),
+            ("list_open_windows", lambda: self.windows),
+            ("_is_iconic", lambda h: h in self.iconic),
+            ("_minimize_window", lambda h: self.minimized.append(h) or True),
+            ("_bring_to_front", lambda h: self.fronted.append(h) or True),
+        ):
+            p = patch.object(WIN, target, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_fist_minimizes_the_active_window(self):
+        self.assertEqual(WIN.gesture_window("minimize"), {"ok": True, "action": "minimize", "window": "WhatsApp"})
+        self.assertEqual(self.minimized, [20])
+
+    def test_fist_falls_back_to_the_first_visible_app_when_the_overlay_is_active(self):
+        self.user32.GetForegroundWindow.return_value = 999  # el overlay no está en la lista
+        self.iconic = {10}
+        self.assertEqual(WIN.gesture_window("minimize")["window"], "WhatsApp")
+        self.assertEqual(self.minimized, [20])
+
+    def test_swipes_cycle_windows_like_alt_tab(self):
+        self.assertEqual(WIN.gesture_window("next")["window"], "Excel")  # sube la de más abajo
+        self.assertEqual(self.fronted, [30])
+        # 'prev' es relativo a la ACTIVA (WhatsApp, 20), no a la primera del orden Z.
+        self.assertEqual(WIN.gesture_window("prev")["window"], "Chrome")
+        self.assertEqual(self.user32.SetWindowPos.call_args.args[0].value, 20)
+        self.assertEqual(self.user32.SetWindowPos.call_args.args[1].value, WIN._HWND_BOTTOM)
+        self.assertEqual(self.fronted, [30, 10])
+
+    def test_swipes_ignore_an_always_on_top_window_above_the_active_one(self):
+        # Visto en vivo: arriba del orden Z había otra ventana y la activa era la segunda.
+        self.user32.GetForegroundWindow.return_value = 20
+        self.assertEqual(WIN.gesture_window("next")["window"], "Excel")
+        self.windows = [{"hwnd": 10, "title": "Siempre visible"}, {"hwnd": 20, "title": "Juego"}]
+        self.assertEqual(WIN.gesture_window("prev")["window"], "Siempre visible")
+        self.assertEqual(self.user32.SetWindowPos.call_args.args[0].value, 20)
+
+    def test_palm_shows_the_desktop_and_restores_only_what_it_minimized(self):
+        self.iconic = {30}  # ya estaba minimizada: no se toca al restaurar
+        self.assertEqual(WIN.gesture_window("desktop"), {"ok": True, "action": "desktop", "minimized": 2})
+        self.assertEqual(self.minimized, [10, 20])
+        self.assertEqual(WIN.gesture_window("desktop"), {"ok": True, "action": "desktop", "restored": 2})
+        restored = [c.args[0].value for c in self.user32.ShowWindow.call_args_list]
+        self.assertEqual(restored, [10, 20])
+        self.assertEqual(WIN._desktop_minimized, [])
+
+    def test_the_overlay_window_is_never_listed(self):
+        # Visto en vivo: el overlay se titula "H.E.R.M.I.S" (el <title> de su página).
+        self.assertIn("h.e.r.m.i.s", WIN._IGNORED_TITLES)
+        self.assertIn("h.e.r.m.i.s overlay", WIN._IGNORED_TITLES)
+
+    def test_invalid_action_or_nothing_to_switch_is_reported(self):
+        self.assertEqual(WIN.gesture_window("close")["error"], "invalid_action")
+        self.windows = self.windows[:1]
+        self.assertEqual(WIN.gesture_window("next")["error"], "no_window")
+
+    def test_tool_validates_and_refreshes_the_window_cache(self):
+        out = json.loads(TOOLS.gesture_window({"action": "rm -rf"}))
+        self.assertEqual(out["error"], "invalid_action")
+        self.assertEqual(self.minimized, [])
+        out = json.loads(TOOLS.gesture_window({"action": "minimize"}))
+        self.assertTrue(out["ok"])
+        self.assertEqual(STATE.load_state()["windows"], ["Chrome", "WhatsApp", "Excel"])
+
+    def test_overlay_message_routes_to_the_plugin_off_the_ws_loop(self):
+        with patch.object(TOOLS, "gesture_window", return_value="{}") as handler:
+            STATE._handle_client_message(json.dumps({"type": "gesture.window", "action": "next"}))
+            for _ in range(50):
+                if handler.called:
+                    break
+                time.sleep(0.02)
+        handler.assert_called_once_with({"action": "next"})
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ _IGNORED_TITLES = frozenset({
     "windows input experience",
     "microsoft text input application",
     "h.e.r.m.i.s overlay",
+    "h.e.r.m.i.s",  # el overlay toma el <title> de su página: nunca moverlo ni minimizarlo
     "settings",
     "configuración",
 })
@@ -293,6 +294,86 @@ def _minimize_window(hwnd: int) -> bool:
         return bool(ctypes.windll.user32.ShowWindow(wintypes.HWND(hwnd), _SW_MINIMIZE))
     except Exception:
         return False
+
+
+GESTURE_ACTIONS = ("minimize", "next", "prev", "desktop")
+_HWND_BOTTOM = 1
+_SWP_NOACTIVATE = 0x0010
+# Ventanas que minimizó el gesto ✋ "escritorio", para restaurar SOLO esas.
+_desktop_minimized: list[int] = []
+
+
+def _is_iconic(hwnd: int) -> bool:
+    try:
+        return bool(ctypes.windll.user32.IsIconic(wintypes.HWND(hwnd)))
+    except Exception:
+        return False
+
+
+def _active_window(windows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """La ventana activa si es una app de la lista; si no (p. ej. el overlay), la primera visible."""
+    try:
+        fg = ctypes.windll.user32.GetForegroundWindow()
+    except Exception:
+        fg = None
+    for win in windows:
+        if win["hwnd"] == fg and not _is_iconic(win["hwnd"]):
+            return win
+    return next((w for w in windows if not _is_iconic(w["hwnd"])), None)
+
+
+def gesture_window(action: str) -> dict[str, Any]:
+    """Gestos sobre ventanas reales (cuando no hay superficies en pantalla).
+
+    Minimiza en vez de cerrar: nunca se pierde nada. La lista viene en orden Z
+    (de arriba hacia abajo), así 'next' recorre todas como un Alt+Tab.
+    """
+    global _desktop_minimized
+    if not is_windows():
+        return {"ok": False, "error": "unsupported_platform", "message": "los gestos sobre ventanas requieren Windows"}
+    if action not in GESTURE_ACTIONS:
+        return {"ok": False, "error": "invalid_action", "message": f"action debe ser una de: {', '.join(GESTURE_ACTIONS)}"}
+    windows = list_open_windows()
+    if action == "desktop":
+        if _desktop_minimized:
+            restored = 0
+            for hwnd in _desktop_minimized:
+                try:
+                    if ctypes.windll.user32.IsWindow(wintypes.HWND(hwnd)):
+                        ctypes.windll.user32.ShowWindow(wintypes.HWND(hwnd), _SW_RESTORE)
+                        restored += 1
+                except Exception:
+                    pass
+            _desktop_minimized = []
+            return {"ok": True, "action": action, "restored": restored}
+        targets = [w["hwnd"] for w in windows if not _is_iconic(w["hwnd"])]
+        _desktop_minimized = [h for h in targets if _minimize_window(h)]
+        return {"ok": True, "action": action, "minimized": len(_desktop_minimized)}
+    if action == "minimize":
+        target = _active_window(windows)
+        if not target:
+            return {"ok": False, "error": "no_window", "message": "no hay ventanas para minimizar"}
+        _minimize_window(target["hwnd"])
+        return {"ok": True, "action": action, "window": target["title"]}
+    # Relativo a la ventana ACTIVA, no a la primera del orden Z: arriba de todo
+    # puede haber una ventana "siempre visible" que no es la que el usuario usa.
+    current = _active_window(windows)
+    others = [w for w in windows if w is not current]
+    if not others:
+        return {"ok": False, "error": "no_window", "message": "no hay otra ventana a la que pasar"}
+    if action == "next":
+        target = others[-1]  # la de más abajo; repetirlo recorre todas
+    else:
+        # 'prev': la activa va al fondo y sube la siguiente; repetirlo recorre hacia atrás.
+        if current:
+            try:
+                flags = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
+                ctypes.windll.user32.SetWindowPos(wintypes.HWND(current["hwnd"]), wintypes.HWND(_HWND_BOTTOM),
+                                                  0, 0, 0, 0, flags)
+            except Exception:
+                pass
+        target = others[0]
+    return {"ok": True, "action": action, "window": target["title"], "focused": _bring_to_front(target["hwnd"])}
 
 
 _WINDOW_SYNONYMS: dict[str, tuple[str, ...]] = {

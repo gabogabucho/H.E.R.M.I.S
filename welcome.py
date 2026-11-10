@@ -17,9 +17,9 @@ from . import ws_server
 WELCOME_ID = "hermis-welcome"
 
 GESTURES: tuple[tuple[str, str, str], ...] = (
-    ("✊", "Puño (sostenido)", "Cierra la superficie de adelante"),
-    ("👋", "Deslizar ← / →", "Pasa a la superficie anterior o siguiente"),
-    ("✋", "Palma (sostenida)", "Oculta o muestra todas las superficies"),
+    ("✊", "Puño (sostenido)", "Cierra la superficie de adelante; sin superficies, minimiza la ventana activa"),
+    ("👋", "Deslizar ← / →", "Pasa a la superficie anterior o siguiente; sin superficies, cambia de ventana"),
+    ("✋", "Palma (sostenida)", "Oculta o muestra las superficies; sin superficies, muestra el escritorio"),
 )
 
 PHRASES: tuple[tuple[str, str], ...] = (

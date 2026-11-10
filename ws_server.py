@@ -163,6 +163,18 @@ def _handle_client_message(raw: Any) -> None:
                     tools.close_surface({"id": surface_id.strip()})
 
             threading.Thread(target=_close, daemon=True, name="hermis-gesture-close").start()
+    elif msg_type == "gesture.window":
+        # Sin superficies en pantalla, el gesto actúa sobre ventanas reales
+        # (minimizar, cambiar, escritorio). Fuera del loop: Win32 puede tardar.
+        action = msg.get("action")
+        if isinstance(action, str):
+            def _window() -> None:
+                with contextlib.suppress(Exception):
+                    from . import tools
+
+                    tools.gesture_window({"action": action})
+
+            threading.Thread(target=_window, daemon=True, name="hermis-gesture-window").start()
     elif msg_type == "voice.status":
         with contextlib.suppress(Exception):
             from . import orb_lifecycle

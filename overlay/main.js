@@ -375,6 +375,13 @@ ipcMain.on('hermis:gesture-close', (_e, id) => {
   sendToPlugin({ type: 'gesture.close', id: id.trim() });
 });
 
+// Sin superficies en pantalla, el gesto va a las ventanas reales (lo hace el plugin con Win32).
+const GESTURE_WINDOW_ACTIONS = new Set(['minimize', 'next', 'prev', 'desktop']);
+ipcMain.on('hermis:gesture-window', (_e, action) => {
+  if (!GESTURE_WINDOW_ACTIONS.has(action)) return;
+  sendToPlugin({ type: 'gesture.window', action });
+});
+
 // Privacidad: cámara solo para la página propia del overlay y solo video.
 // Los cuadros se procesan en el proceso del overlay; nunca salen de la PC.
 // Comparar textos de URL file:// fallaba en Windows (c: vs C:, codificación) y
