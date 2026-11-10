@@ -156,12 +156,29 @@ def _desktop_toggles() -> dict[str, Any]:
                  "Para hablar, usá el botón negro de la derecha (el micrófono es solo dictado).")
 
 
+def _check_gestures() -> dict[str, Any]:
+    """Ítem informativo: gestos con cámara (opcional, apagados por defecto)."""
+    label = "Gestos con cámara (opcional)"
+    try:
+        from . import ws_server
+        enabled = bool(ws_server.load_state().get("gestures", False))
+    except Exception:
+        enabled = False
+    if enabled:
+        return _item("gestures", label, "ok",
+                     "Activados: la cámara se prende solo durante el modo piloto y todo se procesa en tu PC.")
+    return _item("gestures", label, "info",
+                 "Apagados. Para cerrar o cambiar de superficie con la mano, activalos: la cámara "
+                 "funciona solo en el modo piloto y los cuadros nunca salen de tu PC.",
+                 "/hermis gestures on")
+
+
 def run_checks() -> list[dict[str, Any]]:
     """Todos los chequeos; un fallo inesperado en uno nunca rompe el resto."""
     cfg = _read_config()
     checks = (_check_overlay, lambda: _check_stt(cfg), lambda: _check_language(cfg),
               lambda: _check_tts(cfg), lambda: _check_wake(cfg), lambda: _check_computer_use(cfg),
-              _desktop_toggles)
+              _check_gestures, _desktop_toggles)
     items = []
     for check in checks:
         try:

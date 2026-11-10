@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('hermis', {
   openExternal: (url) => ipcRenderer.invoke('hermis:open-external', url),
   copyText: (text) => ipcRenderer.invoke('hermis:copy-text', text),
   refreshSetup: () => ipcRenderer.invoke('hermis:setup-refresh'),
+  gesturesStart: () => ipcRenderer.invoke('hermis:gestures-start'),
+  gestureClose: (id) => ipcRenderer.send('hermis:gesture-close', id),
 });

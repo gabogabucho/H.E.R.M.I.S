@@ -293,6 +293,32 @@ def close_surface(args: dict[str, Any], **kwargs: Any) -> str:
 
 
 @_always_json
+def set_gestures(args: dict[str, Any], **kwargs: Any) -> str:
+    """Activa o desactiva los gestos con cámara (opcional, apagados por defecto).
+
+    Solo persiste el flag y avisa al overlay: la cámara la prende el overlay,
+    y solo cuando el modo piloto también está activo.
+    """
+    if not isinstance(args, dict):
+        return _json({"ok": False, "error": "invalid_args", "message": "args debe ser un objeto"})
+    enabled = args.get("enabled")
+    if not isinstance(enabled, bool):
+        return _json({"ok": False, "error": "invalid_enabled", "message": "enabled debe ser true o false"})
+    st = ws_server.load_state()
+    st["gestures"] = enabled
+    ws_server.save_state(st)
+    delivered, note = _safe_broadcast({"type": "gestures", "enabled": enabled})
+    out: dict[str, Any] = {
+        "ok": True,
+        "gestures": enabled,
+        "delivered": delivered,
+        "overlay_connected": delivered > 0,
+        "note": note,
+    }
+    return _json({k: v for k, v in out.items() if v is not None})
+
+
+@_always_json
 def list_surfaces(args: dict[str, Any] | None = None, **kwargs: Any) -> str:
     """Devuelve el estado de autopilot y las superficies activas."""
     st = ws_server.load_state()

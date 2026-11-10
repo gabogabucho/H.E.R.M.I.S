@@ -22,7 +22,7 @@ def by_id(items):
 
 
 class SetupChecksTest(unittest.TestCase):
-    def run_with(self, config, modules=(), env=None, node=True, node_modules=True):
+    def run_with(self, config, modules=(), env=None, node=True, node_modules=True, gestures=False):
         def has_module(name):
             return name in modules
 
@@ -30,6 +30,7 @@ class SetupChecksTest(unittest.TestCase):
              patch.object(checks, "_has_module", side_effect=has_module), \
              patch.object(checks.shutil, "which", lambda exe: f"C:\\bin\\{exe}" if node else None), \
              patch.object(Path, "is_dir", lambda self: node_modules), \
+             patch.object(hermis.ws_server, "load_state", return_value={"gestures": gestures}), \
              patch.dict(os.environ, env or {}, clear=False):
             if env is not None and "ELEVENLABS_API_KEY" not in env:
                 os.environ.pop("ELEVENLABS_API_KEY", None)
@@ -75,6 +76,18 @@ class SetupChecksTest(unittest.TestCase):
             self.assertIn(hint, desktop)
         self.assertNotIn("fix", items["desktop"])
 
+    def test_gestures_item_is_informative_and_off_by_default(self):
+        items = self.run_with({})
+        self.assertEqual(items["gestures"]["status"], "info")
+        self.assertEqual(items["gestures"]["label"], "Gestos con cámara (opcional)")
+        self.assertEqual(items["gestures"]["fix"], "/hermis gestures on")
+
+    def test_gestures_item_shows_enabled_state_without_command(self):
+        items = self.run_with({}, gestures=True)
+        self.assertEqual(items["gestures"]["status"], "ok")
+        self.assertIn("modo piloto", items["gestures"]["detail"])
+        self.assertNotIn("fix", items["gestures"])
+
     def test_configured_machine_is_all_ok(self):
         config = {
             "stt": {"language": "es"},
@@ -84,7 +97,8 @@ class SetupChecksTest(unittest.TestCase):
         }
         items = self.run_with(config, modules=("faster_whisper", "pyopen_wakeword"))
         self.assertEqual({k: v["status"] for k, v in items.items()},
-                         {**{k: "ok" for k in ("overlay", "stt", "stt_language", "tts", "wake", "computer_use")}, "desktop": "info"})
+                         {**{k: "ok" for k in ("overlay", "stt", "stt_language", "tts", "wake", "computer_use")},
+                          "gestures": "info", "desktop": "info"})
         self.assertEqual(checks.surface_data()["items"][0]["id"], "overlay")
 
     def test_unreadable_config_degrades_to_info(self):
@@ -93,9 +107,10 @@ class SetupChecksTest(unittest.TestCase):
 
     def test_a_crashing_check_never_breaks_the_rest(self):
         with patch.object(checks, "_check_overlay", side_effect=RuntimeError("boom")), \
-             patch.object(checks, "_read_config", return_value={}):
+             patch.object(checks, "_read_config", return_value={}), \
+             patch.object(hermis.ws_server, "load_state", return_value={}):
             items = checks.run_checks()
-        self.assertEqual(len(items), 7)
+        self.assertEqual(len(items), 8)
         self.assertEqual(items[0]["status"], "info")
 
     def test_text_version_includes_commands(self):
