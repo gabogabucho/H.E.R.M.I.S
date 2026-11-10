@@ -41,7 +41,7 @@ class CommandTest(unittest.TestCase):
         registration = ctx.register_command.call_args
         self.assertIsNotNone(registration, "register() must expose /hermis")
         self.assertEqual(registration.kwargs["name"], "hermis")
-        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|gestures on|off]")
+        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|tour|gestures on|off]")
         return registration.kwargs["handler"](args)
 
     def test_command_status_is_read_only(self):

@@ -53,26 +53,78 @@ class SkeletonTest(unittest.TestCase):
         windows.start()
         self.addCleanup(windows.stop)
 
-    def test_first_autopilot_shows_setup_once(self) -> None:
+    def test_first_autopilot_shows_the_welcome_once(self) -> None:
         ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}})
         sent: list[dict] = []
-        fake = {"title": "Configuración de H.E.R.M.I.S", "subtitle": "Todo listo.",
-                "items": [{"id": "overlay", "label": "Overlay", "status": "ok", "detail": "Listo."}]}
+        all_ok = {"title": "Configuración de H.E.R.M.I.S", "subtitle": "Todo listo.",
+                  "items": [{"id": "overlay", "label": "Overlay", "status": "ok", "detail": "Listo."}]}
         with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]), \
-             patch.object(hermis.setup_checks, "surface_data", return_value=fake):
-            tools.autopilot({"state": "on"})
-            first = [m for m in sent if m.get("surface") == "setup"]
-            self.assertEqual(first, [{"type": "render", "surface": "setup", "id": "hermis-setup", "data": fake}])
-            # Persistido: si el overlay arranca después, la sincronización al conectar lo dibuja.
-            self.assertIn("hermis-setup", ws_server.load_state()["surfaces"])
-            self.assertTrue(ws_server.load_state()["onboarded"])
+             patch.object(hermis.setup_checks, "surface_data", return_value=all_ok):
+            out = json.loads(tools.autopilot({"state": "on"}))
+            # Guía rápida en pantalla y la indicación para que Hermes lo explique en este turno.
+            guide = [m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID]
+            self.assertEqual(guide[0]["surface"], "cards")
+            self.assertIn("PRIMERA VEZ", out["welcome"])
+            # Todo configurado: el checklist técnico no molesta.
+            self.assertFalse([m for m in sent if m.get("surface") == "setup"])
+            st = ws_server.load_state()
+            self.assertIn(hermis.welcome.WELCOME_ID, st["surfaces"])  # la sincronización al conectar la redibuja
+            self.assertTrue(st["onboarded"] and st["tour_pending"])
+            # Al terminar el turno la bienvenida queda cerrada.
+            hermis.welcome.post_llm_call()
+            self.assertFalse(ws_server.load_state().get("tour_pending"))
             sent.clear()
             tools.autopilot({"state": "off"})
-            tools.autopilot({"state": "on"})
-            self.assertFalse([m for m in sent if m.get("surface") == "setup"])
-            # /hermis setup lo vuelve a abrir cuando el usuario quiera.
+            out_again = json.loads(tools.autopilot({"state": "on"}))
+            self.assertNotIn("welcome", out_again)
+            self.assertFalse([m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID])
+            # /hermis setup sigue a mano.
             tools.show_setup()
             self.assertEqual(sent[-1]["surface"], "setup")
+
+    def test_first_autopilot_adds_the_checklist_only_when_something_is_missing(self) -> None:
+        ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}})
+        sent: list[dict] = []
+        pending = {"title": "Configuración", "subtitle": "1 pendiente",
+                   "items": [{"id": "wake", "label": "Wake word", "status": "warn", "detail": "Falta.", "fix": "x"}]}
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]), \
+             patch.object(hermis.setup_checks, "surface_data", return_value=pending):
+            tools.autopilot({"state": "on"})
+        self.assertEqual([m["id"] for m in sent if m.get("type") == "render"],
+                         [hermis.welcome.WELCOME_ID, "hermis-setup"])
+
+    def test_welcome_guide_explains_every_gesture_from_one_source(self) -> None:
+        for gestures_on in (True, False):
+            data = hermis.welcome.guide_data(gestures_on)
+            titles = [item["title"] for item in data["items"]]
+            for emoji, name, what in hermis.welcome.GESTURES:
+                self.assertIn(name, titles)
+            voice = hermis.welcome.voice_instruction(gestures_on)
+            if gestures_on:
+                for _, name, what in hermis.welcome.GESTURES:
+                    self.assertIn(what.lower(), voice)
+            else:
+                self.assertIn("/hermis gestures on", voice)
+                self.assertIn("Gestos apagados", titles)
+
+    def test_tour_command_replays_the_welcome(self) -> None:
+        sent: list[dict] = []
+        with patch.object(tools, "_safe_broadcast", side_effect=lambda m: (sent.append(m), (1, None))[1]):
+            tools.show_tour()
+        self.assertEqual(sent[-1]["id"], hermis.welcome.WELCOME_ID)
+        self.assertTrue(ws_server.load_state()["tour_pending"])
+        ws_server.save_state({**ws_server.load_state(), "autopilot": True})
+        self.assertIn("[Bienvenida / Welcome]", tools.pre_llm_call()["context"])
+
+    def test_overlay_deps_reinstall_when_the_lockfile_changes(self) -> None:
+        fake = Path(self.tmp) / "overlay"
+        (fake / "node_modules").mkdir(parents=True)
+        (fake / "package-lock.json").write_text('{"v": 1}', encoding="utf-8")
+        self.assertTrue(overlay_launcher.needs_install(fake))  # instalación vieja sin huella: una vez
+        overlay_launcher._write_deps_marker(fake)
+        self.assertFalse(overlay_launcher.needs_install(fake))
+        (fake / "package-lock.json").write_text('{"v": 2}', encoding="utf-8")  # update con dependencias nuevas
+        self.assertTrue(overlay_launcher.needs_install(fake))
 
     def test_setup_refresh_message_redraws_checklist(self) -> None:
         with patch.object(tools, "show_setup") as show:
@@ -387,7 +439,7 @@ class SkeletonTest(unittest.TestCase):
         hermis.register(ctx)
         self.assertEqual(ctx.register_tool.call_count, 6)
         ctx.register_hook.assert_any_call("pre_llm_call", tools.pre_llm_call)
-        self.assertEqual(ctx.register_hook.call_count, 5)
+        self.assertEqual(ctx.register_hook.call_count, 6)
 
         info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
         self.assertEqual(info["host"], "127.0.0.1")
