@@ -1,4 +1,5 @@
 const { app, BrowserWindow, clipboard, ipcMain, protocol, screen, session, shell } = require('electron');
+const crypto = require('crypto');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
@@ -14,7 +15,9 @@ const FILE_WATCH_DEBOUNCE_MS = 250;
 // renderer pide solo dos cosas fijas por este esquema: el wasm/bundle de
 // node_modules/@mediapipe/tasks-vision y el modelo descargado una vez.
 const MEDIA_SCHEME = 'hermis-media';
-const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/latest/gesture_recognizer.task';
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
+// SHA-256 del modelo pineado: si no coincide, el archivo se descarta.
+const MODEL_SHA256 = '97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482';
 const MODEL_FILE = 'gesture_recognizer.task';
 const TASKS_DIR = path.join(__dirname, 'node_modules', '@mediapipe', 'tasks-vision');
 const MEDIA_TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
@@ -72,8 +75,16 @@ function downloadGestureModel(dest) {
         return;
       }
       const out = fs.createWriteStream(tmp);
+      const hash = crypto.createHash('sha256');
+      res.on('data', (chunk) => hash.update(chunk));
       res.pipe(out);
       out.on('finish', () => out.close(() => {
+        const got = hash.digest('hex');
+        if (got !== MODEL_SHA256) {
+          fs.rmSync(tmp, { force: true });
+          reject(new Error(`modelo de gestos con hash inesperado: ${got}`));
+          return;
+        }
         try { fs.renameSync(tmp, dest); resolve(); } catch (e) { reject(e); }
       }));
       out.on('error', reject);
