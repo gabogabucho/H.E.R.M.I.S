@@ -78,7 +78,7 @@ Everything the plugin does outside of plain Python tool calls:
 
 **Camera gestures (optional)**
 - Off by default. Enable with `/hermis gestures on`. The camera turns on **only** while Autopilot Mode is active, and turns off (all tracks stopped) when you leave the mode or disable gestures. A small green dot next to the orb shows when the camera is on.
-- Frames are processed **locally** by MediaPipe inside the overlay process (GPU when available, CPU fallback). They are never rendered on screen, never stored and never sent anywhere.
+- Frames are processed **locally** by MediaPipe inside the overlay process (GPU when available, CPU fallback). They are never rendered on screen, never stored and never sent anywhere. MediaPipe also tries to send usage logs to `odml.pa.googleapis.com`; the overlay's Content Security Policy blocks that request, so nothing leaves the machine.
 - The first time gestures are enabled, the overlay downloads `gesture_recognizer.task` (~8 MB, Apache-2.0) once from `storage.googleapis.com` into the plugin data directory. Nothing binary is committed to this repo.
 - The model and the MediaPipe WASM reach the renderer only through a private `hermis-media://` protocol with **fixed routes** (no arbitrary file reads). The camera permission is granted only to the overlay's own page and only for **video**.
 

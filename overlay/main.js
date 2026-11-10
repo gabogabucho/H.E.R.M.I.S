@@ -3,7 +3,6 @@ const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { pathToFileURL } = require('url');
 const { WebSocket } = require('ws');
 
 const CONNECT_BACKOFF_MS = 1000;
@@ -378,13 +377,20 @@ ipcMain.on('hermis:gesture-close', (_e, id) => {
 
 // Privacidad: cámara solo para la página propia del overlay y solo video.
 // Los cuadros se procesan en el proceso del overlay; nunca salen de la PC.
+// Comparar textos de URL file:// fallaba en Windows (c: vs C:, codificación) y
+// negaba la cámara. Se reconoce la página por el objeto de la ventana, solo el
+// frame principal (nunca los iframes de artefactos) y la ruta renderer/index.html.
+function isOverlayPage(wc, details) {
+  if (!win || win.isDestroyed() || !wc || wc.id !== win.webContents.id) return false;
+  if (details && details.isMainFrame === false) return false;
+  let url = (details && details.requestingUrl) || '';
+  try { url = decodeURIComponent(url); } catch (e) { /* url tal cual */ }
+  return url.replace(/\\/g, '/').toLowerCase().endsWith('/renderer/index.html');
+}
+
 function registerPermissions() {
-  let pageUrl = '';
-  try { pageUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href; } catch (e) { pageUrl = ''; }
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
-    let ours = false;
-    try { ours = !!(wc && wc.getURL && wc.getURL().startsWith(pageUrl)); } catch (e) { ours = false; }
-    if (permission === 'media' && ours) {
+    if (permission === 'media' && isOverlayPage(wc, details)) {
       const types = details && Array.isArray(details.mediaTypes) ? details.mediaTypes : ['video'];
       callback(types.length > 0 && types.every((t) => t === 'video'));
       return;
