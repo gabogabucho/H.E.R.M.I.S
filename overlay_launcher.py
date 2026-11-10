@@ -12,11 +12,13 @@ procesos). Reglas:
   ``overlay.log`` en el data dir; ``DETACHED_PROCESS`` + ``CREATE_NO_WINDOW``
   en Windows, ``start_new_session`` en el resto.
 - No lanza dos veces: marca en memoria del proceso y en ``overlay.launch``
-  (data dir) y no relanza durante 90 s; Electron bloquea instancias únicas.
+  (data dir) y no relanza durante 90 s (se limpia con ``reset_cooldown`` si el
+  overlay conectado se desconecta); Electron bloquea instancias únicas.
 - Desactivable con ``HERMIS_OVERLAY_AUTOSTART=0``.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -42,6 +44,16 @@ _overlay_dir = Path(__file__).parent / "overlay"
 _launch_lock = threading.Lock()
 _last_launch: float | None = None
 _pipeline_busy = False
+
+
+def reset_cooldown(data_dir: Path | None = None) -> None:
+    """Limpia el cooldown de 90 s cuando el último cliente del overlay se desconecta."""
+    global _last_launch
+    target_dir = data_dir if data_dir is not None else ws_server.data_dir()
+    with _launch_lock:
+        _last_launch = None
+    with contextlib.suppress(OSError):
+        (target_dir / _LAUNCH_FILE).unlink(missing_ok=True)
 
 
 def _recent_launch(now: float, data_dir: Path) -> bool:

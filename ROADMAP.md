@@ -3,7 +3,7 @@
 **Fecha límite: miércoles 11/11/2026, 17:00 EST (19:00 hora de Argentina).**
 Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atrasa, se recorta alcance, no se corre la entrega.
 
-> **Estado actual (8/11):** Días 0, 1 y 2 completos ✅ · Día 3 hecho, falta probarlo con Hermes real · Día 4 a medias (orbe por hooks y `/hermis` listos; falta el WS del gateway y la demo completa).
+> **Estado actual (9/11):** Días 0, 1, 2, 3 y 4 completos ✅ · Día 5 avanzado (reconexión automática del overlay, tools siempre en JSON, onboarding visual `/hermis setup` y suite de 57 tests en verde).
 > Principio del 8/11: el plugin es una **interfaz, no una fuente de datos** (ver `BRIEF.md`).
 
 ---
@@ -47,7 +47,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] `close_surface` + `list_surfaces`, con estado persistente (`plugin_data_dir`)
 - [x] Artefactos HTML/SVG de Hermes al overlay, automático vía `post_llm_call`
 - [x] Al conectar, el overlay recupera el modo y las superficies; el plugin abre el overlay solo
-- [ ] Probar con Hermes real: "últimos 10 correos" (Hermes usa su skill de Google) → `email_list`
+- [x] Probar con Hermes real: "últimos 10 correos" (Hermes usa su skill de Google) → `email_list`
 
 **Validación:** "Hey Hermes, modo piloto automático" → morph → "mostrame mis últimos 10 correos" → se dibuja la lista.
 
@@ -81,8 +81,8 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 
 ## Día 5 · Mar 10/11 — Confiabilidad y pulido
 
-- [ ] Manejo de errores: el overlay se cae → el plugin reconecta; las tools siempre devuelven JSON
-- [ ] Tests del protocolo y de las tools
+- [x] Manejo de errores: el overlay se cae → el plugin reconecta; las tools siempre devuelven JSON
+- [x] Tests del protocolo y de las tools
 - [x] README con instalación y la disclosure completa (procesos en segundo plano, red, shell)
 - [x] Entrada del catálogo lista en `docs/catalog/hermis.yaml` (falta pinear el SHA final)
 - [x] Licencia: MIT (`LICENSE`)
