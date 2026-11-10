@@ -677,6 +677,37 @@ class AutostartTest(unittest.TestCase):
             res = json.loads(tools.close_surface({"id": "x"}))
         self.assertEqual(res["note"], "instalá Node.js 20+ para ver el overlay")
 
+    def test_overlay_relaunch_after_client_disconnect(self) -> None:
+        ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True})
+        ws_server.start(data_dir=self.tmp)
+        info = json.loads((Path(self.tmp) / "overlay.json").read_text(encoding="utf-8"))
+        uri = f"ws://{info['host']}:{info['port']}"
+        with patch.object(overlay_launcher, "_launch_pipeline", self._record_pipeline), \
+             patch.object(win32_windows, "list_open_windows", return_value=[]):
+            res = json.loads(tools.autopilot({"state": "on"}))
+            self.assertEqual(res["note"], "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(1))
+            self.assertIsNone(overlay_launcher.ensure_overlay_running())
+
+            async def connect_and_close() -> None:
+                async with connect(uri) as client:
+                    await client.send(json.dumps({"type": "hello", "token": info["token"]}))
+                    self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
+
+            asyncio.run(connect_and_close())
+            for _ in range(50):
+                if not (Path(self.tmp) / "overlay.launch").exists():
+                    break
+                time.sleep(0.02)
+            time.sleep(0.05)
+
+            res2 = json.loads(tools.render_surface({
+                "surface": "notification",
+                "data": {"text": "relaunch", "level": "info"},
+            }))
+            self.assertEqual(res2["note"], "abriendo el overlay…")
+            self.assertTrue(self._wait_pipeline_calls(2))
+
     def test_register_never_launches_overlay(self) -> None:
         ctx = MagicMock(plugin_data_dir=self.tmp)
         hermis.register(ctx)

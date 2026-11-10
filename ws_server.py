@@ -236,6 +236,12 @@ async def _handler(conn: Any) -> None:
     finally:
         with _lock:
             _clients.discard(conn)
+            remaining = len(_clients)
+        if remaining == 0:
+            with contextlib.suppress(Exception):
+                from . import overlay_launcher
+
+                overlay_launcher.reset_cooldown()
 
 
 _STATE["handler"] = _handler
