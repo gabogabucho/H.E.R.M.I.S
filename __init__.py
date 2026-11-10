@@ -53,6 +53,6 @@ def register(ctx) -> None:
     ctx.register_hook("post_llm_call", welcome.post_llm_call)
     ctx.register_command(
         name="hermis", handler=commands.handle,
-        description="Show H.E.R.M.I.S status, switch autopilot, toggle camera gestures, check installation, open the setup checklist, or replay the autopilot tour.",
-        args_hint="[status|on|off|check|setup|tour|gestures on|off]",
+        description="Show H.E.R.M.I.S status, switch autopilot, retry overlay startup, toggle camera gestures, check installation, open setup, or replay the tour.",
+        args_hint="[status|on|off|check|setup|retry|tour|gestures on|off]",
     )

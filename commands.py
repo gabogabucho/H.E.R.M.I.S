@@ -2,26 +2,28 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
-from . import setup_checks, tools, ws_server
+from . import overlay_launcher, setup_checks, tools, ws_server
 
-USAGE = "Usage: /hermis [status|on|off|check|setup|tour|gestures on|off]"
+USAGE = "Usage: /hermis [status|on|off|check|setup|retry|tour|gestures on|off]"
 
 
 def handle(raw_args: str = "") -> str:
     """Return status, switch the mode, inspect local prerequisites, or show the setup checklist."""
     parts = raw_args.strip().lower().split()
     action = parts[0] if parts else "status"
-    if action not in {"status", "on", "off", "check", "setup", "tour", "gestures"}:
+    if action not in {"status", "on", "off", "check", "setup", "retry", "tour", "gestures"}:
         return USAGE
     if action == "gestures":
         if len(parts) != 2 or parts[1] not in ("on", "off"):
             return USAGE
     elif len(parts) > 1:
         return USAGE
+    if action == "retry":
+        note = overlay_launcher.ensure_overlay_running(retry=True)
+        return f"Overlay startup: {overlay_launcher.bootstrap_summary()}" + (f"\n{note}" if note else "")
     if action == "gestures":
         # Toggle opcional (apagado por defecto): persiste el flag y avisa al overlay.
         state = parts[1]
@@ -62,15 +64,18 @@ def handle(raw_args: str = "") -> str:
         f"Autopilot: {'on' if state.get('autopilot') else 'off'}",
         f"Surfaces: {len(state.get('surfaces') or {})}",
         f"Gestures: {'on' if state.get('gestures') else 'off'}",
-        "Overlay connection: not checked (read-only status).",
+        "Overlay connection: not checked across processes (local startup status below).",
+        f"Overlay startup: {overlay_launcher.bootstrap_summary()}",
     ]
     if action == "check":
         dependencies = Path(__file__).parent / "overlay" / "node_modules"
+        runtime = overlay_launcher.runtime_status()
         lines.extend([
             "Read-only installation check; not an end-to-end test.",
             f"Windows desktop: {'available' if sys.platform == 'win32' else 'unavailable on this OS'}",
-            f"Node.js: {'found (version not checked; requires 20+)' if shutil.which('node') else 'missing'}",
-            f"npm: {'found' if shutil.which('npm') else 'missing'}",
+            f"Node.js: {(runtime['version'] or 'found (version not verified)') if runtime['node'] else 'missing'}",
+            f"npm: {'found' if runtime['npm'] else 'missing'}",
+            f"Overlay runtime: {runtime['error'] or ('compatible; requires Node.js >= ' + overlay_launcher.NODE_REQUIREMENT)}",
             f"Overlay dependencies: {'directory present (not validated)' if dependencies.is_dir() else 'not installed'}",
             "Voice: not verified; check voice mode in Hermes.",
             "Wake word: not verified; check wake-word settings in Hermes.",

@@ -17,7 +17,7 @@ The agent never sends HTML for its own surfaces, only data. The overlay decides 
 | **Artifacts** | With Autopilot on, ```` ```html ```` and ```` ```svg ```` blocks in Hermes' replies are copied to the overlay as sandboxed artifact surfaces. |
 | **Windows** | `layout_windows` splits, tiles (`grid`), maximizes, focuses or minimizes others on real Windows windows through Win32. `launch_app` finds and opens desktop apps. |
 | **Living orb** | The orb shows listening from Hermes' voice events (`voice.status`, `wake.detected` on the local gateway) and thinking / acting from Hermes' own turn and tool hooks. |
-| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist), `/hermis tour` (replay the welcome), `/hermis gestures on|off`. |
+| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist), `/hermis retry` (retry overlay startup without changing mode or surfaces), `/hermis tour` (replay the welcome), `/hermis gestures on|off`. |
 | **Welcome** | The first time Autopilot turns on, Hermes introduces the mode by voice in a couple of sentences and the overlay shows a **quick guide**: example requests and what each camera gesture does. It happens once; replay it with `/hermis tour`. |
 | **Onboarding** | If something is missing, the first run also shows a setup checklist (overlay, speech-to-text, its language, text-to-speech, wake word, computer-use approvals, camera gestures). Every missing step comes with the exact command and a **Copy** button; nothing is installed or changed for you. Open it any time with `/hermis setup`. |
 
@@ -27,7 +27,7 @@ Voice, the "hey hermes" wake word and computer use all come from Hermes itself. 
 
 - **Windows 10/11** (the window manager uses Win32; other platforms load the plugin but `layout_windows` / `launch_app` return `unsupported_platform`).
 - **Hermes Agent ≥ 0.22**.
-- **Node.js 20+ and npm** on `PATH`, for the overlay.
+- **Stable Node.js 22.12.0+ and npm** on `PATH`, for the pinned overlay dependencies.
 - Optional, for the full experience: Hermes voice mode (`/voice on`) and wake word (`/wake on`).
 
 ## Install
@@ -52,7 +52,21 @@ Then, inside Hermes:
 
 The first time Autopilot turns on, the plugin runs `npm ci` in `overlay/` (this downloads Electron, about 100 MB) and then starts the overlay. Later starts are instant. If something fails, look at `overlay.log` in the plugin data directory.
 
+`/hermis check`, the setup checklist and automatic launch use the same runtime check: Node and npm must be on `PATH`, and `node --version` must report a compatible stable version within five seconds. An unsupported or unverifiable version prevents automatic installation/launch; it does not install or upgrade Node for you. After installing Node, restart the Hermes gateway so it sees the updated `PATH`. A compatible runtime is not proof that Electron or voice is connected.
+
 ## Configuration
+
+### Recovering overlay startup
+
+Use `/hermis status` or `/hermis check` to inspect local bootstrap progress: `installing`, `starting`, `failed` or `connected`. Starting a process is not a successful connection. After 30 seconds without an observed local overlay connection, diagnostics report `startup_timeout`; they do not kill the process. Setup also displays active startup or failure details. Diagnostics are snapshots: refresh setup or run the command again to update them.
+
+If startup failed, run `/hermis retry`. This retries the overlay without toggling Autopilot, clearing surfaces or consuming the welcome. An active install or live npm wrapper in this Hermes process blocks duplicate retries. A failed install releases its local cooldown; a failed launch can reinstall pinned dependencies on explicit retry. No dependency folders need to be deleted manually. `HERMIS_OVERLAY_AUTOSTART=0` also disables retry.
+
+Failure details use fixed error codes and numeric exit codes, not raw npm output, exception messages or session tokens. `overlay.log` remains a separate troubleshooting log; review it privately before sharing it.
+
+**Scope:** connection status remains process-local. Cooperating Hermes hosts sharing the same overlay installation now use a nonblocking native lock for installation and the owned npm startup wrapper's lifetime. A competing host reports `busy` instead of starting another worker; retry after the owner finishes. The lock identity file, `overlay/.hermis-bootstrap.lock`, must not be deleted to force a retry. It is not a PID/timestamp lock: ownership is a held OS handle, not file presence.
+
+This does not certify cleanup of npm descendants after timeout or host termination, network-filesystem locking, manual npm commands, or the real Windows lifecycle. A connection owned by another host remains unverified here. A live wrapper with no connection is deliberately not killed or duplicated; close it intentionally before retrying. Do not repeat `/hermis on` to recover startup: reactivating an already active mode retains its existing surface-clearing behavior.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -63,6 +77,7 @@ The first time Autopilot turns on, the plugin runs `npm ci` in `overlay/` (this 
 Everything the plugin does outside of plain Python tool calls:
 
 **Background processes**
+- Installation checks and automatic overlay launch run `node --version` as a bounded, read-only subprocess. They do not run npm or change dependencies merely to check the runtime.
 - A daemon thread in the Hermes process runs a WebSocket server bound to **127.0.0.1 only**, on an ephemeral port, protected by a per-session token. Only the overlay connects to it.
 - When Autopilot turns on (or on the first surface drawn with no overlay connected), the plugin starts the Electron overlay as a **detached background process** via `npm start`. On the first run it runs `npm ci` first. Disable with `HERMIS_OVERLAY_AUTOSTART=0`.
 - `launch_app` starts the requested app as a detached process. It never uses `shell=True`.
@@ -86,6 +101,8 @@ Everything the plugin does outside of plain Python tool calls:
 **Setup checklist** (`/hermis setup` and the first Autopilot run)
 - Reads Hermes `config.yaml` **read-only** and checks whether optional engines are installed. API keys are checked only for **presence** in the process environment; their values and `.env` are never read.
 - **Copy** buttons write the shown command to your clipboard. The plugin never runs these commands.
+- Opening or refreshing setup does not complete the first-use welcome; the quick guide still appears when you first enable Autopilot.
+- The summary distinguishes detected missing prerequisites from informational steps. No detected missing prerequisites does not verify live voice, playback or Desktop settings. Follow each step in its indicated environment, not necessarily PowerShell.
 
 **Desktop control**
 - The overlay is a transparent, always-on-top, full-screen window. Clicks pass through wherever nothing is drawn.
@@ -101,6 +118,8 @@ Everything the plugin does outside of plain Python tool calls:
 - `state.json`: Autopilot on/off and the open surfaces.
 - `overlay.json`: the current WebSocket port and session token.
 - `overlay.log`: npm and overlay output.
+
+The installation directory also contains `overlay/.hermis-bootstrap.lock`, an empty native-lock identity file shared by cooperating hosts. Checks do not create it. The launcher keeps the file in place after releasing ownership; do not remove it while another host may be running. The implementation uses Python's [Windows byte-range locking](https://docs.python.org/3/library/msvcrt.html#msvcrt.locking) or [POSIX flock](https://docs.python.org/3/library/fcntl.html#fcntl.flock).
 
 ## Architecture
 

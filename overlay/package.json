@@ -4,6 +4,9 @@
   "private": true,
   "description": "Overlay Electron de H.E.R.M.I.S: dibuja superficies y el orbe sobre el escritorio de Windows 11",
   "main": "main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron ."
   },

@@ -57,7 +57,6 @@ def show_setup() -> dict[str, Any]:
     entry = _setup_entry()
     st = ws_server.load_state()
     st.setdefault("surfaces", {})[SETUP_ID] = entry
-    st["onboarded"] = True
     ws_server.save_state(st)
     delivered, note = _safe_broadcast({"type": "render", "surface": "setup", "id": SETUP_ID, "data": entry["data"]})
     launch_note = _maybe_start_overlay(delivered)
