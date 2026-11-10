@@ -17,6 +17,7 @@ procesos). Reglas:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -66,6 +67,43 @@ def _detach_kwargs() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
+# Huella del package-lock con el que se hizo el último `npm ci` exitoso. Sin
+# esto, un update del plugin que suma dependencias nunca las instalaba (solo se
+# instalaba si faltaba node_modules entero).
+_DEPS_MARKER = ".hermis-lock-sha256"
+
+
+def _lock_digest(overlay_path: Path) -> str | None:
+    try:
+        return hashlib.sha256((overlay_path / "package-lock.json").read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def needs_install(overlay_path: Path) -> bool:
+    """Hay que correr `npm ci`: falta node_modules o cambió el package-lock."""
+    modules = overlay_path / "node_modules"
+    if not modules.exists():
+        return True
+    digest = _lock_digest(overlay_path)
+    if digest is None:
+        return False
+    try:
+        return (modules / _DEPS_MARKER).read_text(encoding="utf-8").strip() != digest
+    except OSError:
+        return True  # instalación previa sin huella: se reinstala una sola vez
+
+
+def _write_deps_marker(overlay_path: Path) -> None:
+    digest = _lock_digest(overlay_path)
+    if digest is None:
+        return
+    try:
+        (overlay_path / "node_modules" / _DEPS_MARKER).write_text(digest, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("no se pudo guardar la huella de dependencias: %s", exc)
+
+
 def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: bool) -> None:
     """Corre en un hilo daemon: ``npm ci`` (si falta) y después ``npm start``.
 
@@ -86,6 +124,7 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
                         log.write(f"\n[hermis] npm ci failed with exit code {result.returncode}\n"
                                   .encode("utf-8", "replace"))
                         return
+                    _write_deps_marker(overlay_path)
                 except subprocess.TimeoutExpired:
                     log.write(b"\n[hermis] npm ci tardo demasiado; intento cancelado\n")
                     return
@@ -121,7 +160,8 @@ def ensure_overlay_running() -> str | None:
             return None
         _last_launch = now
         _pipeline_busy = True
-    installing = not (_overlay_dir / "node_modules").exists()
+    updating = (_overlay_dir / "node_modules").exists()
+    installing = needs_install(_overlay_dir)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         (data_dir / _LAUNCH_FILE).write_text(
@@ -135,6 +175,8 @@ def ensure_overlay_running() -> str | None:
         with _launch_lock:
             _pipeline_busy = False
         return f"no se pudo abrir el overlay: {exc}"
+    if installing and updating:
+        return "abriendo el overlay; actualiza sus dependencias (~1 min)"
     if installing:
         return "abriendo el overlay; la primera vez instala dependencias (~1 min)"
     return "abriendo el overlay…"

@@ -8,14 +8,14 @@ from pathlib import Path
 
 from . import setup_checks, tools, ws_server
 
-USAGE = "Usage: /hermis [status|on|off|check|setup|gestures on|off]"
+USAGE = "Usage: /hermis [status|on|off|check|setup|tour|gestures on|off]"
 
 
 def handle(raw_args: str = "") -> str:
     """Return status, switch the mode, inspect local prerequisites, or show the setup checklist."""
     parts = raw_args.strip().lower().split()
     action = parts[0] if parts else "status"
-    if action not in {"status", "on", "off", "check", "setup", "gestures"}:
+    if action not in {"status", "on", "off", "check", "setup", "tour", "gestures"}:
         return USAGE
     if action == "gestures":
         if len(parts) != 2 or parts[1] not in ("on", "off"):
@@ -30,6 +30,15 @@ def handle(raw_args: str = "") -> str:
             return "Gestures change failed. Check the local plugin logs."
         connection = "connected" if result.get("overlay_connected") else "not connected"
         return f"Gestures: {state}\nOverlay: {connection}"
+    if action == "tour":
+        # Repite la bienvenida: guía rápida en pantalla y Hermes la explica en el próximo turno.
+        try:
+            shown = tools.show_tour()
+            where = ("The quick guide is on screen." if shown.get("delivered")
+                     else str(shown.get("note") or "The overlay will show it when it starts."))
+        except Exception:
+            where = "Could not draw the guide in the overlay."
+        return f"H.E.R.M.I.S tour: Hermes will explain Autopilot Mode on your next message.\n{where}"
     if action == "setup":
         # Mismo checklist en el chat y en el overlay (con botones Copiar).
         try:

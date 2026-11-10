@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from . import overlay_launcher
 from . import setup_checks
+from . import welcome
 from . import win32_windows
 from . import ws_server
 from . import orb_lifecycle
@@ -36,6 +37,19 @@ SETUP_ID = "hermis-setup"
 
 def _setup_entry() -> dict[str, Any]:
     return {"id": SETUP_ID, "surface": "setup", "data": setup_checks.surface_data()}
+
+
+def show_tour() -> dict[str, Any]:
+    """/hermis tour: vuelve a dibujar la guía rápida y Hermes la explica en el próximo turno."""
+    st = ws_server.load_state()
+    entry = welcome.entry(bool(st.get("gestures")))
+    st.setdefault("surfaces", {})[entry["id"]] = entry
+    st["tour_pending"] = True
+    ws_server.save_state(st)
+    delivered, note = _safe_broadcast({"type": "render", "surface": entry["surface"], "id": entry["id"],
+                                       "data": entry["data"]})
+    launch_note = _maybe_start_overlay(delivered)
+    return {"delivered": delivered, "note": launch_note or note}
 
 
 def show_setup() -> dict[str, Any]:
@@ -174,12 +188,21 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
     clear = not active or was_active
     if clear:
         st["surfaces"] = {}
+    first_surfaces: list[dict[str, Any]] = []
     if active:
         _refresh_windows_cache(st)
         if first_run:
-            # Onboarding visual: solo la primera vez; después, con /hermis setup.
-            st.setdefault("surfaces", {})[SETUP_ID] = _setup_entry()
+            # Bienvenida, solo la primera vez (después, /hermis tour): guía rápida
+            # en pantalla y Hermes lo explica por voz. El checklist técnico solo
+            # aparece si falta algo; siempre queda /hermis setup.
+            first_surfaces.append(welcome.entry(bool(st.get("gestures"))))
+            setup = _setup_entry()
+            if any(item.get("status") == "warn" for item in setup["data"].get("items", [])):
+                first_surfaces.append(setup)
+            for entry in first_surfaces:
+                st.setdefault("surfaces", {})[entry["id"]] = entry
             st["onboarded"] = True
+            st["tour_pending"] = True
     else:
         st.pop("windows", None)
     ws_server.save_state(st)
@@ -188,9 +211,8 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         # El overlay tiene que coincidir con lo que pre_llm_call le dice a Hermes.
         _safe_broadcast({"type": "close", "id": "all"})
     delivered, note = _safe_broadcast({"type": "mode", "autopilot": active})
-    if first_run:
-        entry = st["surfaces"][SETUP_ID]
-        _safe_broadcast({"type": "render", "surface": entry["surface"], "id": SETUP_ID, "data": entry["data"]})
+    for entry in first_surfaces:
+        _safe_broadcast({"type": "render", "surface": entry["surface"], "id": entry["id"], "data": entry["data"]})
     if active:
         launch_note = _maybe_start_overlay(delivered)
         if launch_note:
@@ -202,6 +224,8 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         "delivered": delivered,
         "overlay_connected": delivered > 0,
         "note": note,
+        # Viaja en el resultado para que Hermes lo explique en este mismo turno.
+        "welcome": welcome.voice_instruction(bool(st.get("gestures"))) if first_run else None,
     }
     return _json({k: v for k, v in out.items() if v is not None})
 
@@ -417,6 +441,9 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
             "llama a `render_surface` con `surface='notification'` y `data={'text': '...', 'level': 'info', 'opacity': <20..98>, 'theme': 'light'|'dark'} "
             "(20 = muy traslúcido, 84 = normal, 96 = casi sólido)."
         )
+        if st.get("tour_pending"):
+            # Bienvenida activada con /hermis on o /hermis tour (sin pasar por la tool).
+            lines.append("[Bienvenida / Welcome] " + welcome.voice_instruction(bool(st.get("gestures"))))
     if surfaces:
         lines.append("[Superficies abiertas en pantalla]")
         for sid, entry in surfaces.items():

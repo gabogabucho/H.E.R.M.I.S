@@ -17,8 +17,9 @@ The agent never sends HTML for its own surfaces, only data. The overlay decides 
 | **Artifacts** | With Autopilot on, ```` ```html ```` and ```` ```svg ```` blocks in Hermes' replies are copied to the overlay as sandboxed artifact surfaces. |
 | **Windows** | `layout_windows` splits, tiles (`grid`), maximizes, focuses or minimizes others on real Windows windows through Win32. `launch_app` finds and opens desktop apps. |
 | **Living orb** | The orb shows listening from Hermes' voice events (`voice.status`, `wake.detected` on the local gateway) and thinking / acting from Hermes' own turn and tool hooks. |
-| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist). |
-| **Onboarding** | The first time Autopilot turns on, the overlay shows a setup checklist (overlay, speech-to-text, its language, text-to-speech, wake word, computer-use approvals). Every missing step comes with the exact command and a **Copy** button; nothing is installed or changed for you. Reopen it any time with `/hermis setup`. |
+| **`/hermis`** | `/hermis status`, `/hermis on`, `/hermis off`, `/hermis check` (read-only installation check), `/hermis setup` (setup checklist), `/hermis tour` (replay the welcome), `/hermis gestures on|off`. |
+| **Welcome** | The first time Autopilot turns on, Hermes introduces the mode by voice in a couple of sentences and the overlay shows a **quick guide**: example requests and what each camera gesture does. It happens once; replay it with `/hermis tour`. |
+| **Onboarding** | If something is missing, the first run also shows a setup checklist (overlay, speech-to-text, its language, text-to-speech, wake word, computer-use approvals, camera gestures). Every missing step comes with the exact command and a **Copy** button; nothing is installed or changed for you. Open it any time with `/hermis setup`. |
 
 Voice, the "hey hermes" wake word and computer use all come from Hermes itself. This plugin does not reimplement them.
 

@@ -116,6 +116,8 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
                     out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
                 if raw.get("onboarded"):
                     out["onboarded"] = True
+                if raw.get("tour_pending"):
+                    out["tour_pending"] = True
                 return out
         except Exception:
             pass

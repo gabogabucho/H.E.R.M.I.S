@@ -20,11 +20,15 @@ class OrbLifecycleTest(unittest.TestCase):
         ctx = MagicMock(plugin_data_dir=self.tmp.name)
         with patch.object(hermis.ws_server, "start"):
             hermis.register(ctx)
-        self.hooks = {c.args[0]: c.args[1] for c in ctx.register_hook.call_args_list}
+        # Hermes llama a TODOS los callbacks registrados por hook (hay varios post_llm_call).
+        self.hooks = {}
+        for c in ctx.register_hook.call_args_list:
+            self.hooks.setdefault(c.args[0], []).append(c.args[1])
         self.identity = {"session_id": "session", "task_id": "task", "turn_id": "turn"}
 
     def call(self, hook, **extra):
-        return self.hooks[hook](**(self.identity | extra))
+        results = [callback(**(self.identity | extra)) for callback in self.hooks[hook]]
+        return next((r for r in results if r is not None), None)
 
     def test_orb_sequence_preserves_context_and_storage(self):
         before = self.path.read_bytes()
@@ -73,8 +77,10 @@ class OrbLifecycleTest(unittest.TestCase):
 
     def test_orb_disabled_or_unidentified_hooks_are_silent(self):
         with patch.object(hermis.ws_server, "broadcast") as send:
-            self.hooks["pre_llm_call"]()
-            self.hooks["pre_tool_call"](tool_call_id="a")
+            for callback in self.hooks["pre_llm_call"]:
+                callback()
+            for callback in self.hooks["pre_tool_call"]:
+                callback(tool_call_id="a")
             hermis.ws_server.save_state({"autopilot": False, "surfaces": {}})
             for hook in self.hooks:
                 self.assertIsNone(self.call(hook, tool_call_id="a"))
