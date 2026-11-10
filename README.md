@@ -64,7 +64,9 @@ If startup failed, run `/hermis retry`. This retries the overlay without togglin
 
 Failure details use fixed error codes and numeric exit codes, not raw npm output, exception messages or session tokens. `overlay.log` remains a separate troubleshooting log; review it privately before sharing it.
 
-**Scope:** this status and retry guard are process-local. A connection owned by another Hermes process is not certified here. This does not add a cross-process install lock or certify cleanup of npm child processes after timeout. Use one Hermes plugin host for installation/recovery; multi-host exclusion and clean Windows lifecycle verification remain release work. A live wrapper with no connection is deliberately not killed or duplicated; close it intentionally before retrying. Do not repeat `/hermis on` to recover startup: reactivating an already active mode retains its existing surface-clearing behavior.
+**Scope:** connection status remains process-local. Cooperating Hermes hosts sharing the same overlay installation now use a nonblocking native lock for installation and the owned npm startup wrapper's lifetime. A competing host reports `busy` instead of starting another worker; retry after the owner finishes. The lock identity file, `overlay/.hermis-bootstrap.lock`, must not be deleted to force a retry. It is not a PID/timestamp lock: ownership is a held OS handle, not file presence.
+
+This does not certify cleanup of npm descendants after timeout or host termination, network-filesystem locking, manual npm commands, or the real Windows lifecycle. A connection owned by another host remains unverified here. A live wrapper with no connection is deliberately not killed or duplicated; close it intentionally before retrying. Do not repeat `/hermis on` to recover startup: reactivating an already active mode retains its existing surface-clearing behavior.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -116,6 +118,8 @@ Everything the plugin does outside of plain Python tool calls:
 - `state.json`: Autopilot on/off and the open surfaces.
 - `overlay.json`: the current WebSocket port and session token.
 - `overlay.log`: npm and overlay output.
+
+The installation directory also contains `overlay/.hermis-bootstrap.lock`, an empty native-lock identity file shared by cooperating hosts. Checks do not create it. The launcher keeps the file in place after releasing ownership; do not remove it while another host may be running. The implementation uses Python's [Windows byte-range locking](https://docs.python.org/3/library/msvcrt.html#msvcrt.locking) or [POSIX flock](https://docs.python.org/3/library/fcntl.html#fcntl.flock).
 
 ## Architecture
 

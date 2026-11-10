@@ -15,6 +15,9 @@ procesos). Reglas:
   (data dir) y no relanza durante 90 s (se limpia con ``reset_cooldown`` si el
   overlay conectado se desconecta); Electron bloquea instancias únicas.
 - Desactivable con ``HERMIS_OVERLAY_AUTOSTART=0``.
+- A held native lock serializes cooperating hosts using the same overlay
+  installation, through installation and the owned npm wrapper's lifetime.
+  The identity file is never deleted as a stale-lock recovery mechanism.
 """
 from __future__ import annotations
 
@@ -30,9 +33,9 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
-from . import ws_server
+from . import bootstrap_lock, ws_server
 
 logger = logging.getLogger("hermis")
 
@@ -50,6 +53,7 @@ _launch_lock = threading.Lock()
 _last_launch: float | None = None
 _pipeline_busy = False
 _launch_process: subprocess.Popen | None = None
+_bootstrap_guard: BinaryIO | None = None
 _bootstrap: dict[str, Any] = {"phase": "idle", "error": None, "started_at": 0}
 _ERROR_DETAILS = {
     "install_failed": "La instalación falló. Revisa la conexión a npm y vuelve a intentar.",
@@ -61,7 +65,17 @@ _ERROR_DETAILS = {
     "process_unknown": "No se pudo verificar si el proceso de inicio sigue activo. No se iniciará otro.",
     "storage_failed": "No se pudo escribir en el directorio de datos del plugin. Revisa sus permisos.",
     "worker_failed": "No se pudo iniciar el trabajo en segundo plano. Vuelve a intentar.",
+    "lock_failed": "No se pudo bloquear la instalación del overlay. Revisa los permisos del directorio del plugin.",
 }
+
+
+def _release_bootstrap_guard() -> None:
+    """Release our native ownership while holding _launch_lock."""
+    global _bootstrap_guard
+    guard, _bootstrap_guard = _bootstrap_guard, None
+    if guard is not None:
+        with contextlib.suppress(OSError):
+            bootstrap_lock.release(guard)
 
 
 def _process_running(process: subprocess.Popen | None) -> bool:
@@ -94,6 +108,8 @@ def bootstrap_status() -> dict[str, Any]:
                 status.update(phase="failed", error="startup_timeout")
     status.pop("started_at", None)
     status["detail"] = _ERROR_DETAILS.get(status["error"], "Conexión no verificada en este proceso.")
+    if status["phase"] == "busy":
+        status["detail"] = "Otra instancia está usando esta instalación del overlay. Vuelve a intentar cuando termine."
     running = _process_running(process)
     status["retryable"] = not busy and not running and status["phase"] in {"idle", "failed"}
     if status["phase"] == "failed" and running:
@@ -255,11 +271,19 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
             with _launch_lock:
                 _launch_process = process
                 _bootstrap = {"phase": "starting", "error": None, "started_at": time.monotonic()}
+            if process is not None:
+                try:
+                    process.wait()
+                except OSError:
+                    with _launch_lock:
+                        _bootstrap = {"phase": "failed", "error": "process_unknown", "started_at": 0}
     except Exception:
         _bootstrap_failed("storage_failed", data_dir)
     finally:
         with _launch_lock:
             _pipeline_busy = False
+            if not _process_running(_launch_process):
+                _release_bootstrap_guard()
 
 
 def ensure_overlay_running(*, retry: bool = False) -> str | None:
@@ -268,7 +292,7 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
     Devuelve ``None`` cuando no hay nada que avisar: env desactivado, throttle
     activo (se lanzó hace menos de 90 s) o pipeline en curso.
     """
-    global _last_launch, _pipeline_busy, _bootstrap, _launch_process
+    global _last_launch, _pipeline_busy, _bootstrap, _launch_process, _bootstrap_guard
     if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
         return None
     snapshot = bootstrap_status()
@@ -283,12 +307,21 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
     with _launch_lock:
         if _pipeline_busy or _process_running(_launch_process):
             return None
+        _release_bootstrap_guard()
         if retry and snapshot["phase"] == "failed" and snapshot["retryable"]:
             _last_launch = None
             with contextlib.suppress(OSError):
                 (data_dir / _LAUNCH_FILE).unlink(missing_ok=True)
         if _recent_launch(now, data_dir):
             return None
+        try:
+            _bootstrap_guard = bootstrap_lock.acquire(_overlay_dir)
+        except OSError:
+            _bootstrap = {"phase": "failed", "error": "lock_failed", "started_at": 0}
+            return _ERROR_DETAILS["lock_failed"]
+        if _bootstrap_guard is None:
+            _bootstrap = {"phase": "busy", "error": None, "started_at": 0}
+            return "Otra instancia está usando esta instalación del overlay. Vuelve a intentar cuando termine."
         _last_launch = now
         _pipeline_busy = True
         _launch_process = None
@@ -305,6 +338,7 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
         _bootstrap_failed("storage_failed", data_dir)
         with _launch_lock:
             _pipeline_busy = False
+            _release_bootstrap_guard()
         return _ERROR_DETAILS["storage_failed"]
     try:
         threading.Thread(target=_launch_pipeline, args=(npm, _overlay_dir, data_dir, installing),
@@ -313,6 +347,7 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
         _bootstrap_failed("worker_failed", data_dir)
         with _launch_lock:
             _pipeline_busy = False
+            _release_bootstrap_guard()
         return _ERROR_DETAILS["worker_failed"]
     if installing and updating:
         return "abriendo el overlay; actualiza sus dependencias (~1 min)"

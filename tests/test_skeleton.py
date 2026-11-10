@@ -545,6 +545,7 @@ class AutostartTest(unittest.TestCase):
         overlay_launcher._pipeline_busy = False
         self.pipeline_calls: list[tuple] = []
         self.patches = [
+            patch.object(overlay_launcher, "_bootstrap_guard", None),
             patch.object(overlay_launcher, "_launch_process", None),
             patch.object(overlay_launcher, "_bootstrap", {"phase": "idle", "error": None, "started_at": 0}),
             patch.object(overlay_launcher.shutil, "which", lambda cmd: f"C:\\fake\\{cmd}.exe"),
@@ -555,6 +556,7 @@ class AutostartTest(unittest.TestCase):
             p.start()
 
     def tearDown(self) -> None:
+        overlay_launcher._release_bootstrap_guard()
         for p in self.patches:
             p.stop()
         os.environ["HERMIS_OVERLAY_AUTOSTART"] = "0"

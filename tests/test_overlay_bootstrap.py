@@ -36,12 +36,14 @@ class BootstrapTest(unittest.TestCase):
             patch.object(launcher, "_last_launch", None),
             patch.object(launcher, "_pipeline_busy", False),
             patch.object(launcher, "_launch_process", None),
+            patch.object(launcher, "_bootstrap_guard", None),
             patch.object(launcher, "_bootstrap", {"phase": "idle", "error": None, "started_at": 0}),
             patch.object(hermis.ws_server, "overlay_connected", return_value=False),
             patch.object(launcher, "runtime_status", return_value={"node": "node", "npm": "npm", "version": "v22.12.0", "error": None}),
         ):
             mock.start()
             self.addCleanup(mock.stop)
+        self.addCleanup(launcher._release_bootstrap_guard)
         hermis.ws_server.save_state({"autopilot": True, "onboarded": True, "seq": 1,
                                     "surfaces": {"doc": {"id": "doc", "surface": "document", "data": {"title": "Keep"}}}})
         self.before = (self.directory / "state.json").read_bytes()

@@ -29,9 +29,12 @@ class OverlayRuntimeTest(unittest.TestCase):
             patch.dict(hermis.ws_server._STATE, data_dir_override=self.tmp.name),
             patch.object(launcher, "_last_launch", None),
             patch.object(launcher, "_pipeline_busy", False),
+            patch.object(launcher, "_bootstrap_guard", None),
+            patch.object(launcher, "_overlay_dir", Path(self.tmp.name)),
         ):
             mock.start()
             self.addCleanup(mock.stop)
+        self.addCleanup(launcher._release_bootstrap_guard)
 
     def test_incompatible_or_unverified_node_blocks_launch_without_state_changes(self):
         cases = (

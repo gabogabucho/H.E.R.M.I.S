@@ -75,7 +75,7 @@ def _check_overlay() -> dict[str, Any]:
     if startup["phase"] == "failed":
         return _item("overlay", label, "warn", overlay_launcher.bootstrap_summary(),
                      "/hermis retry" if startup["retryable"] else None)
-    if startup["phase"] in {"installing", "starting", "disabled"}:
+    if startup["phase"] in {"installing", "starting", "disabled", "busy"}:
         return _item("overlay", label, "info", overlay_launcher.bootstrap_summary())
     if not (OVERLAY_DIR / "node_modules").is_dir():
         return _item("overlay", label, "warn",
