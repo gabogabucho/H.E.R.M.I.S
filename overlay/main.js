@@ -1,13 +1,30 @@
-const { app, BrowserWindow, clipboard, ipcMain, screen, shell } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, protocol, screen, session, shell } = require('electron');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { pathToFileURL } = require('url');
 const { WebSocket } = require('ws');
 
 const CONNECT_BACKOFF_MS = 1000;
 const CONNECT_BACKOFF_MAX_MS = 30000;
 const HELLO_TIMEOUT_MS = 5000;
 const FILE_WATCH_DEBOUNCE_MS = 250;
+
+// Gestos v1: el WASM de MediaPipe no carga desde file://, así que el
+// renderer pide solo dos cosas fijas por este esquema: el wasm/bundle de
+// node_modules/@mediapipe/tasks-vision y el modelo descargado una vez.
+const MEDIA_SCHEME = 'hermis-media';
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/latest/gesture_recognizer.task';
+const MODEL_FILE = 'gesture_recognizer.task';
+const TASKS_DIR = path.join(__dirname, 'node_modules', '@mediapipe', 'tasks-vision');
+const MEDIA_TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
+
+// Antes de que la app esté lista: esquema estándar, seguro, con fetch y CORS
+// (la página es file:// y el import de módulos ES exige CORS explícito).
+protocol.registerSchemesAsPrivileged([
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+]);
 
 let win = null;
 let sock = null;
@@ -37,6 +54,60 @@ function overlayFilePath() {
   const dir = dataDirOverride();
   if (dir) return path.join(dir, 'overlay.json');
   return path.join(defaultHermesHome(), 'plugin-data', 'hermis', 'overlay.json');
+}
+
+// El modelo vive en el data dir del plugin (sobrevive updates; nunca se commitea).
+function gestureModelPath() {
+  const dir = dataDirOverride() || path.join(defaultHermesHome(), 'plugin-data', 'hermis');
+  return path.join(dir, MODEL_FILE);
+}
+
+function downloadGestureModel(dest) {
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const tmp = `${dest}.part`;
+    https.get(MODEL_URL, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`descarga del modelo: HTTP ${res.statusCode}`));
+        return;
+      }
+      const out = fs.createWriteStream(tmp);
+      res.pipe(out);
+      out.on('finish', () => out.close(() => {
+        try { fs.renameSync(tmp, dest); resolve(); } catch (e) { reject(e); }
+      }));
+      out.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+// Solo rutas fijas: nada de servir archivos arbitrarios del disco.
+function resolveMediaFile(url) {
+  if (url.hostname === 'tasks-vision') {
+    const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    const file = path.normalize(path.join(TASKS_DIR, rel));
+    return file.startsWith(TASKS_DIR + path.sep) ? file : null;
+  }
+  if (url.hostname === 'model') return gestureModelPath();
+  return null;
+}
+
+function registerMediaProtocol() {
+  protocol.handle(MEDIA_SCHEME, (request) => {
+    let file = null;
+    try { file = resolveMediaFile(new URL(request.url)); } catch (e) { file = null; }
+    if (!file || !fs.existsSync(file)) {
+      return new Response(null, { status: 404 });
+    }
+    return new Response(fs.readFileSync(file), {
+      headers: {
+        'Content-Type': MEDIA_TYPES[path.extname(file)] || 'application/octet-stream',
+        // La página vive en file:// (origen null): CORS explícito para módulos ES.
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  });
 }
 
 function readOverlayInfo() {
@@ -284,10 +355,50 @@ ipcMain.handle('hermis:copy-text', (_e, text) => {
 // Onboarding: "Volver a revisar" pide al plugin que recalcule el checklist.
 ipcMain.handle('hermis:setup-refresh', () => sendToPlugin({ type: 'setup.refresh' }));
 
+// Gestos: el renderer pide preparar el modelo (descarga única) antes de prender la cámara.
+ipcMain.handle('hermis:gestures-start', async () => {
+  try {
+    const target = gestureModelPath();
+    if (!fs.existsSync(target)) {
+      console.log('[overlay] descargando el modelo de gestos (una sola vez)…');
+      await downloadGestureModel(target);
+    }
+    return { ok: true };
+  } catch (e) {
+    console.warn('[overlay] modelo de gestos no disponible:', e.message);
+    return { ok: false, message: e.message };
+  }
+});
+
+// Gesto ✊: el renderer indica la superficie de adelante; main la reenvía al plugin.
+ipcMain.on('hermis:gesture-close', (_e, id) => {
+  if (typeof id !== 'string' || !id.trim()) return;
+  sendToPlugin({ type: 'gesture.close', id: id.trim() });
+});
+
+// Privacidad: cámara solo para la página propia del overlay y solo video.
+// Los cuadros se procesan en el proceso del overlay; nunca salen de la PC.
+function registerPermissions() {
+  let pageUrl = '';
+  try { pageUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href; } catch (e) { pageUrl = ''; }
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+    let ours = false;
+    try { ours = !!(wc && wc.getURL && wc.getURL().startsWith(pageUrl)); } catch (e) { ours = false; }
+    if (permission === 'media' && ours) {
+      const types = details && Array.isArray(details.mediaTypes) ? details.mediaTypes : ['video'];
+      callback(types.length > 0 && types.every((t) => t === 'video'));
+      return;
+    }
+    callback(false);
+  });
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.whenReady().then(async () => {
+    registerMediaProtocol();
+    registerPermissions();
     await createWindow();
     watchOverlayFile();
     watchRendererFiles();

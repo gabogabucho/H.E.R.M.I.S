@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:">
+  <title>H.E.R.M.I.S — prueba de gestos</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0e1116; color: #e8eaed; display: grid; grid-template-columns: 640px 1fr; gap: 20px; padding: 20px; }
+    .stage { position: relative; width: 640px; height: 480px; border-radius: 14px; overflow: hidden; background: #000; }
+    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+    .gesture { font-size: 64px; line-height: 1.1; margin: 10px 0; }
+    .score { font-size: 18px; color: #9aa0a6; }
+    .swipe { font-size: 28px; margin-top: 18px; min-height: 36px; color: #8ab4f8; }
+    .log { font-size: 13px; color: #9aa0a6; white-space: pre-wrap; margin-top: 18px; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    ul { padding-left: 18px; color: #c4c7c5; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="stage"><video id="video" autoplay playsinline muted></video><canvas id="canvas" width="640" height="480"></canvas></div>
+  <div>
+    <h1>Prueba de gestos (todo local)</h1>
+    <ul>
+      <li>✊ puño · ✋ palma abierta · ☝️ dedo arriba · 👍 / 👎 pulgar · ✌️ victoria</li>
+      <li>Deslizar: mové la mano abierta rápido de un lado al otro</li>
+    </ul>
+    <div class="gesture" id="gesture">…</div>
+    <div class="score" id="score">cargando</div>
+    <div class="swipe" id="swipe"></div>
+    <div class="log" id="log"></div>
+  </div>
+  <script type="module">
+    import { FilesetResolver, GestureRecognizer, DrawingUtils } from '/tasks-vision/vision_bundle.mjs';
+
+    const NAMES = { None: '—', Closed_Fist: '✊ Puño', Open_Palm: '✋ Palma', Pointing_Up: '☝️ Dedo arriba',
+      Thumb_Up: '👍 Pulgar arriba', Thumb_Down: '👎 Pulgar abajo', Victory: '✌️ Victoria', ILoveYou: '🤟 I love you' };
+    const $ = (id) => document.getElementById(id);
+    const report = (msg) => { console.log(`HERMIS_GESTURE:${msg}`); $('log').textContent = `${msg}\n${$('log').textContent}`.slice(0, 1200); };
+
+    async function create(delegate) {
+      const vision = await FilesetResolver.forVisionTasks('/tasks-vision/wasm');
+      return GestureRecognizer.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: '/model.task', delegate },
+        runningMode: 'VIDEO',
+        numHands: 1,
+      });
+    }
+
+    let recognizer;
+    let delegate = 'GPU';
+    try {
+      recognizer = await create('GPU');
+    } catch (err) {
+      report(`GPU no disponible (${err.message}); uso CPU`);
+      delegate = 'CPU';
+      recognizer = await create('CPU');
+    }
+    report(`ready ${delegate}`);
+
+    const video = $('video');
+    try {
+      video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    } catch (err) {
+      report(`camera error ${err.name}: ${err.message}`);
+      throw err;
+    }
+    await video.play();
+    report(`camera ok ${video.videoWidth}x${video.videoHeight}`);
+
+    const ctx = $('canvas').getContext('2d');
+    const draw = new DrawingUtils(ctx);
+    let lastTime = -1;
+    let frames = 0;
+    let fpsStamp = performance.now();
+    let lastGesture = '';
+    const trail = [];  // posiciones x de la muñeca para detectar deslizamientos
+    let swipeCooldown = 0;
+
+    function loop() {
+      if (video.currentTime !== lastTime) {
+        lastTime = video.currentTime;
+        const now = performance.now();
+        const result = recognizer.recognizeForVideo(video, now);
+        ctx.clearRect(0, 0, 640, 480);
+        frames += 1;
+        if (now - fpsStamp > 1000) {
+          $('score').dataset.fps = String(frames);
+          frames = 0;
+          fpsStamp = now;
+        }
+        const top = result.gestures?.[0]?.[0];
+        const hand = result.landmarks?.[0];
+        if (hand) {
+          draw.drawConnectors(hand, GestureRecognizer.HAND_CONNECTIONS, { color: '#8ab4f8', lineWidth: 3 });
+          draw.drawLandmarks(hand, { color: '#fdd663', radius: 3 });
+          trail.push({ t: now, x: 1 - hand[0].x });  // espejado, como se ve en pantalla
+          while (trail.length && now - trail[0].t > 350) trail.shift();
+          const dx = trail.length > 1 ? trail[trail.length - 1].x - trail[0].x : 0;
+          if (now > swipeCooldown && Math.abs(dx) > 0.28) {
+            const dir = dx > 0 ? 'Deslizar →' : '← Deslizar';
+            $('swipe').textContent = dir;
+            report(`swipe ${dx > 0 ? 'right' : 'left'}`);
+            swipeCooldown = now + 700;
+            trail.length = 0;
+          }
+        } else {
+          trail.length = 0;
+        }
+        const name = top ? top.categoryName : 'None';
+        $('gesture').textContent = hand ? (NAMES[name] || name) : 'sin mano';
+        $('score').textContent = `${top ? Math.round(top.score * 100) : 0}% · ${delegate} · ${$('score').dataset.fps || '…'} fps`;
+        if (top && top.score > 0.7 && name !== 'None' && name !== lastGesture) {
+          report(`gesture ${name} ${top.score.toFixed(2)}`);
+        }
+        lastGesture = hand && top ? name : '';
+        if (now > swipeCooldown + 1500) $('swipe').textContent = '';
+      }
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>
