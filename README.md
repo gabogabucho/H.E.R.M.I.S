@@ -27,7 +27,7 @@ Voice, the "hey hermes" wake word and computer use all come from Hermes itself. 
 
 - **Windows 10/11** (the window manager uses Win32; other platforms load the plugin but `layout_windows` / `launch_app` return `unsupported_platform`).
 - **Hermes Agent ≥ 0.22**.
-- **Node.js 20+ and npm** on `PATH`, for the overlay.
+- **Stable Node.js 22.12.0+ and npm** on `PATH`, for the pinned overlay dependencies.
 - Optional, for the full experience: Hermes voice mode (`/voice on`) and wake word (`/wake on`).
 
 ## Install
@@ -52,6 +52,8 @@ Then, inside Hermes:
 
 The first time Autopilot turns on, the plugin runs `npm ci` in `overlay/` (this downloads Electron, about 100 MB) and then starts the overlay. Later starts are instant. If something fails, look at `overlay.log` in the plugin data directory.
 
+`/hermis check`, the setup checklist and automatic launch use the same runtime check: Node and npm must be on `PATH`, and `node --version` must report a compatible stable version within five seconds. An unsupported or unverifiable version prevents automatic installation/launch; it does not install or upgrade Node for you. After installing Node, restart the Hermes gateway so it sees the updated `PATH`. A compatible runtime is not proof that Electron or voice is connected.
+
 ## Configuration
 
 | Variable | Default | Effect |
@@ -63,6 +65,7 @@ The first time Autopilot turns on, the plugin runs `npm ci` in `overlay/` (this 
 Everything the plugin does outside of plain Python tool calls:
 
 **Background processes**
+- Installation checks and automatic overlay launch run `node --version` as a bounded, read-only subprocess. They do not run npm or change dependencies merely to check the runtime.
 - A daemon thread in the Hermes process runs a WebSocket server bound to **127.0.0.1 only**, on an ephemeral port, protected by a per-session token. Only the overlay connects to it.
 - When Autopilot turns on (or on the first surface drawn with no overlay connected), the plugin starts the Electron overlay as a **detached background process** via `npm start`. On the first run it runs `npm ci` first. Disable with `HERMIS_OVERLAY_AUTOSTART=0`.
 - `launch_app` starts the requested app as a detached process. It never uses `shell=True`.
@@ -86,6 +89,8 @@ Everything the plugin does outside of plain Python tool calls:
 **Setup checklist** (`/hermis setup` and the first Autopilot run)
 - Reads Hermes `config.yaml` **read-only** and checks whether optional engines are installed. API keys are checked only for **presence** in the process environment; their values and `.env` are never read.
 - **Copy** buttons write the shown command to your clipboard. The plugin never runs these commands.
+- Opening or refreshing setup does not complete the first-use welcome; the quick guide still appears when you first enable Autopilot.
+- The summary distinguishes detected missing prerequisites from informational steps. No detected missing prerequisites does not verify live voice, playback or Desktop settings. Follow each step in its indicated environment, not necessarily PowerShell.
 
 **Desktop control**
 - The overlay is a transparent, always-on-top, full-screen window. Clicks pass through wherever nothing is drawn.

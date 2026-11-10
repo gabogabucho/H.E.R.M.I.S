@@ -1,6 +1,7 @@
 """Onboarding: los chequeos son de solo lectura y dan el comando exacto para lo que falta."""
 import importlib.util
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -28,7 +29,8 @@ class SetupChecksTest(unittest.TestCase):
 
         with patch.object(checks, "_read_config", return_value=config), \
              patch.object(checks, "_has_module", side_effect=has_module), \
-             patch.object(checks.shutil, "which", lambda exe: f"C:\\bin\\{exe}" if node else None), \
+             patch.object(hermis.overlay_launcher.shutil, "which", lambda exe: f"C:\\bin\\{exe}" if node else None), \
+             patch.object(hermis.overlay_launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "v22.12.0")), \
              patch.object(Path, "is_dir", lambda self: node_modules), \
              patch.object(hermis.ws_server, "load_state", return_value={"gestures": gestures}), \
              patch.dict(os.environ, env or {}, clear=False):
@@ -120,6 +122,22 @@ class SetupChecksTest(unittest.TestCase):
             text = checks.as_text()
         self.assertIn("[falta] Wake word: Falta.", text)
         self.assertIn("    hermes pm install --extra wake-openwakeword", text)
+
+    def test_surface_summary_does_not_treat_information_as_verified_readiness(self):
+        cases = (
+            (["ok"], "Chequeos completados sin faltantes detectados."),
+            (["ok", "info"], "No se detectaron faltantes. Revisa las indicaciones de los pasos informativos."),
+            (["warn", "info", "warn"], "2 paso(s) pendiente(s). Consulta las indicaciones de cada paso y vuelve a revisar."),
+        )
+        for statuses, expected in cases:
+            with self.subTest(statuses=statuses):
+                items = [{"id": str(i), "label": "Check", "status": status, "detail": "Details"}
+                         for i, status in enumerate(statuses)]
+                with patch.object(checks, "run_checks", return_value=items):
+                    data = checks.surface_data()
+                self.assertEqual(data["subtitle"], expected)
+                self.assertEqual(data["items"], items)
+                self.assertEqual(data["title"], "Configuración de H.E.R.M.I.S")
 
 
 if __name__ == "__main__":

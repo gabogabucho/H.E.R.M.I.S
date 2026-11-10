@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,12 +40,39 @@ _RELAUNCH_COOLDOWN_S = 90
 _INSTALL_TIMEOUT_S = 300
 _LAUNCH_FILE = "overlay.launch"
 _LOG_FILE = "overlay.log"
+MIN_NODE_VERSION = (22, 12, 0)
+NODE_REQUIREMENT = ".".join(map(str, MIN_NODE_VERSION))
 
 _overlay_dir = Path(__file__).parent / "overlay"
 
 _launch_lock = threading.Lock()
 _last_launch: float | None = None
 _pipeline_busy = False
+
+
+def runtime_status() -> dict[str, Any]:
+    """Inspect PATH and a bounded Node version probe without installing anything."""
+    node, npm = shutil.which("node"), shutil.which("npm")
+    status: dict[str, Any] = {"node": node, "npm": npm, "version": None, "error": None}
+    requirement = f"Node.js >= {NODE_REQUIREMENT} y npm"
+    if not node or not npm:
+        status["error"] = f"Se requiere {requirement} en PATH para iniciar el overlay."
+        return status
+    try:
+        result = subprocess.run([node, "--version"], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=5, **_detach_kwargs())
+    except (OSError, subprocess.TimeoutExpired):
+        status["error"] = f"No se pudo verificar Node.js. Se requiere {requirement}; revisa la instalación y PATH."
+        return status
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", result.stdout.strip()) if result.returncode == 0 else None
+    if match is None:
+        status["error"] = f"No se pudo verificar una versión estable de Node.js. Se requiere {requirement}."
+        return status
+    version = tuple(map(int, match.groups()))
+    status["version"] = "v" + ".".join(map(str, version))
+    if version < MIN_NODE_VERSION:
+        status["error"] = f"Node.js {status['version']} no es compatible. Se requiere {requirement}."
+    return status
 
 
 def reset_cooldown(data_dir: Path | None = None) -> None:
@@ -162,9 +190,10 @@ def ensure_overlay_running() -> str | None:
     global _last_launch, _pipeline_busy
     if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
         return None
-    node, npm = shutil.which("node"), shutil.which("npm")
-    if not node or not npm:
-        return "instalá Node.js 20+ para ver el overlay"
+    runtime = runtime_status()
+    if runtime["error"]:
+        return runtime["error"]
+    npm = runtime["npm"]
     data_dir = ws_server.data_dir()
     now = time.time()
     with _launch_lock:

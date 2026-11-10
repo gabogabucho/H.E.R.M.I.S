@@ -546,6 +546,7 @@ class AutostartTest(unittest.TestCase):
         self.pipeline_calls: list[tuple] = []
         self.patches = [
             patch.object(overlay_launcher.shutil, "which", lambda cmd: f"C:\\fake\\{cmd}.exe"),
+            patch.object(overlay_launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "v22.12.0")),
             patch.object(overlay_launcher, "_overlay_dir", self.fake_overlay),
         ]
         for p in self.patches:
@@ -577,7 +578,7 @@ class AutostartTest(unittest.TestCase):
     def test_missing_node_returns_clear_note(self) -> None:
         with patch.object(overlay_launcher.shutil, "which", lambda cmd: None):
             note = overlay_launcher.ensure_overlay_running()
-        self.assertEqual(note, "instalá Node.js 20+ para ver el overlay")
+        self.assertEqual(note, "Se requiere Node.js >= 22.12.0 y npm en PATH para iniciar el overlay.")
         self.assertFalse((Path(self.tmp) / "overlay.launch").exists())
 
     def test_first_launch_installs_dependencies(self) -> None:
@@ -675,7 +676,7 @@ class AutostartTest(unittest.TestCase):
         # con node ausente, la note clara reemplaza a la genérica
         with patch.object(overlay_launcher.shutil, "which", lambda cmd: None):
             res = json.loads(tools.close_surface({"id": "x"}))
-        self.assertEqual(res["note"], "instalá Node.js 20+ para ver el overlay")
+        self.assertEqual(res["note"], "Se requiere Node.js >= 22.12.0 y npm en PATH para iniciar el overlay.")
 
     def test_overlay_relaunch_after_client_disconnect(self) -> None:
         ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True})

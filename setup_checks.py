@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+from . import overlay_launcher
 
 OVERLAY_DIR = Path(__file__).resolve().parent / "overlay"
 RESTART = "hermes gateway stop; hermes gateway ensure"
@@ -66,8 +67,9 @@ def _item(check_id: str, label: str, status: str, detail: str, fix: str | None =
 
 def _check_overlay() -> dict[str, Any]:
     label = "Overlay (Electron)"
-    if not (shutil.which("node") and shutil.which("npm")):
-        return _item("overlay", label, "warn", "Falta Node.js 20+ y npm para dibujar sobre el escritorio.",
+    runtime = overlay_launcher.runtime_status()
+    if runtime["error"]:
+        return _item("overlay", label, "warn", runtime["error"],
                      "winget install OpenJS.NodeJS.LTS")
     if not (OVERLAY_DIR / "node_modules").is_dir():
         return _item("overlay", label, "warn",
@@ -191,7 +193,12 @@ def run_checks() -> list[dict[str, Any]]:
 def surface_data() -> dict[str, Any]:
     items = run_checks()
     pending = sum(1 for it in items if it["status"] == "warn")
-    subtitle = "Todo listo." if not pending else f"{pending} paso(s) pendiente(s). Copiá el comando, corrélo en PowerShell y volvé a revisar."
+    if pending:
+        subtitle = f"{pending} paso(s) pendiente(s). Consulta las indicaciones de cada paso y vuelve a revisar."
+    elif any(it["status"] == "info" for it in items):
+        subtitle = "No se detectaron faltantes. Revisa las indicaciones de los pasos informativos."
+    else:
+        subtitle = "Chequeos completados sin faltantes detectados."
     return {"title": "Configuración de H.E.R.M.I.S", "subtitle": subtitle, "items": items}
 
 

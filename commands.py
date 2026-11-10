@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
-from . import setup_checks, tools, ws_server
+from . import overlay_launcher, setup_checks, tools, ws_server
 
 USAGE = "Usage: /hermis [status|on|off|check|setup|tour|gestures on|off]"
 
@@ -66,11 +65,13 @@ def handle(raw_args: str = "") -> str:
     ]
     if action == "check":
         dependencies = Path(__file__).parent / "overlay" / "node_modules"
+        runtime = overlay_launcher.runtime_status()
         lines.extend([
             "Read-only installation check; not an end-to-end test.",
             f"Windows desktop: {'available' if sys.platform == 'win32' else 'unavailable on this OS'}",
-            f"Node.js: {'found (version not checked; requires 20+)' if shutil.which('node') else 'missing'}",
-            f"npm: {'found' if shutil.which('npm') else 'missing'}",
+            f"Node.js: {(runtime['version'] or 'found (version not verified)') if runtime['node'] else 'missing'}",
+            f"npm: {'found' if runtime['npm'] else 'missing'}",
+            f"Overlay runtime: {runtime['error'] or ('compatible; requires Node.js >= ' + overlay_launcher.NODE_REQUIREMENT)}",
             f"Overlay dependencies: {'directory present (not validated)' if dependencies.is_dir() else 'not installed'}",
             "Voice: not verified; check voice mode in Hermes.",
             "Wake word: not verified; check wake-word settings in Hermes.",
