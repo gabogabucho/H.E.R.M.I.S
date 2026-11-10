@@ -10,10 +10,54 @@
 'use strict';
 
 const ORB_SIZE = 96;
+const ORB_CORE_SIZE = 52; // r=38 in 140 viewBox → 76/140 * 96 ≈ 52px
 const ORB_RIGHT = 32;
 const ORB_BOTTOM = 72;
-// La barra de chat del boceto (pantalla 1) mide 520x64; el morph la dibuja
-// escalando el orbe, así la interpolación transform es siempre limpia.
+const BAR_WIDTH = 520;
+const BAR_HEIGHT = 64;
+// Orbe facetado dentro de la esfera del morph: misma geometría que <lumen-orb>
+// pero con ids propios (el <lumen-orb> está oculto durante la intro y sus
+// gradientes no se pueden referenciar con display: none).
+const MORPH_ORB_SVG = `
+  <svg class="morph-orb" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <radialGradient id="morphCoreGrad" cx="35%" cy="30%" r="68%">
+        <stop offset="0%" stop-color="#dff8ff" stop-opacity="0.98"/>
+        <stop offset="28%" stop-color="#7ddcff" stop-opacity="0.95"/>
+        <stop offset="62%" stop-color="#1c8fff" stop-opacity="1"/>
+        <stop offset="100%" stop-color="#0a3c9a" stop-opacity="1"/>
+      </radialGradient>
+      <radialGradient id="morphAuraGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#5ac8fa" stop-opacity="0.55"/>
+        <stop offset="100%" stop-color="#5ac8fa" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="morphGlow">
+        <feGaussianBlur stdDeviation="5" result="coloredBlur"/>
+        <feMerge>
+          <feMergeNode in="coloredBlur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <circle cx="70" cy="70" r="52" fill="url(#morphAuraGrad)" opacity="0.95" filter="url(#morphGlow)"/>
+    <circle cx="70" cy="70" r="38" fill="url(#morphCoreGrad)" filter="url(#morphGlow)"/>
+    <circle cx="70" cy="70" r="38" fill="none" stroke="rgba(255,255,255,0.38)" stroke-width="1.2"/>
+    <g fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.08)" stroke-width="0.8">
+      <polygon points="70,30 45,46 58,70 82,66 95,44"/>
+      <polygon points="45,46 34,72 52,95 70,84 58,70"/>
+      <polygon points="95,44 106,72 88,96 70,84 82,66"/>
+      <polygon points="52,95 70,110 88,96 70,84"/>
+    </g>
+    <polyline points="70,30 58,70 45,46 82,66 95,44 70,84 52,95 88,96 106,72" fill="none"
+      stroke="rgba(220,245,255,0.35)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="70" cy="70" r="11" fill="rgba(235,250,255,0.95)"/>
+    <ellipse cx="56" cy="50" rx="11" ry="7" transform="rotate(-25 56 50)" fill="rgba(255,255,255,0.9)"/>
+    <circle cx="88" cy="50" r="2.8" fill="rgba(255,255,255,0.9)"/>
+    <circle cx="94" cy="84" r="1.8" fill="rgba(255,255,255,0.9)"/>
+  </svg>`;
+// La barra de chat del boceto (pantalla 1) mide 520x64. El morph anima
+// width/height/border-radius reales (píldora → esfera) para no deformar la
+// forma en óvalo; BAR_SCALE_* quedan por compatibilidad.
 const BAR_SCALE_X = 520 / ORB_SIZE;
 const BAR_SCALE_Y = 64 / ORB_SIZE;
 const INTRO_MS = 2400;
@@ -715,7 +759,7 @@ class LumenShell extends HTMLElement {
       <div id="notifications-container"></div>
       <div id="morph-layer" class="hidden">
         <div class="morph-veil"></div>
-        <div class="morph-shape"></div>
+        <div class="morph-shape">${MORPH_ORB_SVG}</div>
         <div class="morph-bar-label">${escapeHtml(BAR_HINT)}</div>
         <div class="morph-text"></div>
       </div>
@@ -1184,6 +1228,7 @@ class LumenShell extends HTMLElement {
     if (this.autopilot) {
       const activeOrb = this.querySelector('lumen-orb');
       if (activeOrb) activeOrb.classList.add('autopilot');
+      if (activeOrb) activeOrb.style.opacity = '';
     }
     this._morphAnims = [];
     this._morphTimers = [];
@@ -1202,60 +1247,109 @@ class LumenShell extends HTMLElement {
     const text = layer.querySelector('.morph-text');
     this._introPlaying = true;
     orb.classList.remove('autopilot');
+    orb.style.opacity = '0';
     text.textContent = INTRO_TEXT;
     layer.classList.remove('hidden');
 
     const c = this._orbCenter();
     const dx = c.x - window.innerWidth / 2;
     const dy = c.y - window.innerHeight / 2;
-    const bar = `translate(-50%, -50%) scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`;
-    const big = 'translate(-50%, -50%) scale(1.75)';
-    const final = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`;
 
+    // Velo: aparece suave
     this._animate(veil, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'forwards', easing: 'ease-out' });
+
+    // Forma: píldora 520×64 → esfera 88×88 en el centro → esfera 52×52 en la esquina
     this._animate(shape, [
-      { transform: bar, opacity: 0 },
-      { transform: bar, opacity: 1, offset: 0.12 },
-      { transform: big, opacity: 1, offset: 0.5 },
-      { transform: final, opacity: 1 },
+      { width: `${BAR_WIDTH}px`, height: `${BAR_HEIGHT}px`, borderRadius: '32px',
+        transform: 'translate(-50%, -50%) scale(0.96)', opacity: 0, offset: 0 },
+      { width: `${BAR_WIDTH}px`, height: `${BAR_HEIGHT}px`, borderRadius: '32px',
+        transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.12 },
+      { width: `${BAR_WIDTH}px`, height: `${BAR_HEIGHT}px`, borderRadius: '32px',
+        transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.34 },
+      { width: '88px', height: '88px', borderRadius: '999px',
+        transform: 'translate(-50%, -50%) scale(1.04)', opacity: 1, offset: 0.54 },
+      { width: '80px', height: '80px', borderRadius: '999px',
+        transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.66 },
+      { width: `${ORB_CORE_SIZE}px`, height: `${ORB_CORE_SIZE}px`, borderRadius: '999px',
+        transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`, opacity: 1, offset: 1.0 },
     ], { duration: INTRO_MS, easing: 'cubic-bezier(0.45, 0, 0.2, 1)', fill: 'forwards' });
+
+    // Orbe facetado: aparece mientras la barra se cierra y gira hasta quedar
+    // derecho al llegar a la esquina (igual que <lumen-orb>, sin salto).
+    const facets = shape.querySelector('.morph-orb');
+    if (facets) {
+      this._animate(facets, [
+        { opacity: 0, transform: 'translate(-50%, -50%) rotate(-60deg)', offset: 0 },
+        { opacity: 0, transform: 'translate(-50%, -50%) rotate(-60deg)', offset: 0.36 },
+        { opacity: 1, transform: 'translate(-50%, -50%) rotate(-20deg)', offset: 0.56 },
+        { opacity: 1, transform: 'translate(-50%, -50%) rotate(0deg)', offset: 1.0 },
+      ], { duration: INTRO_MS, easing: 'cubic-bezier(0.45, 0, 0.2, 1)', fill: 'forwards' });
+    }
+
+    // Etiqueta de la barra: se ve mientras la píldora está abierta
     this._animate(label, [
       { opacity: 0 },
       { opacity: 1, offset: 0.12 },
-      { opacity: 1, offset: 0.42 },
-      { opacity: 0, offset: 0.5 },
+      { opacity: 1, offset: 0.30 },
+      { opacity: 0, offset: 0.40 },
     ], { duration: INTRO_MS, fill: 'forwards' });
 
-    this._later(1450, () => {
-      this._animate(text, [{ opacity: 0 }, { opacity: 1 }], { duration: 450, fill: 'forwards', easing: 'ease-out' });
+    // Texto "¿Qué hacemos hoy?": aparece cuando la esfera se forma en el centro
+    this._later(1200, () => {
+      this._animate(text, [
+        { opacity: 0, transform: 'translateY(10px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ], { duration: 420, fill: 'forwards', easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
     });
+
+    // Handoff: cross-fade al orbe real sin salto de tamaño
     this._later(INTRO_MS + 50, () => {
       orb.classList.add('autopilot');
-      this._animate(shape, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards', easing: 'ease-in' });
+      this._animate(orb, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, fill: 'forwards', easing: 'ease-out' });
+      this._animate(shape, [{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards', easing: 'ease-in' });
     });
-    this._later(INTRO_MS + 250, () => {
-      this._animate(veil, [{ opacity: 1 }, { opacity: 0 }], { duration: 550, fill: 'forwards', easing: 'ease-in' });
-      this._animate(text, [{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards', easing: 'ease-in' });
+    this._later(INTRO_MS + 320, () => {
+      orb.style.opacity = '';
+      this._animate(veil, [{ opacity: 1 }, { opacity: 0 }], { duration: 500, fill: 'forwards', easing: 'ease-in' });
+      this._animate(text, [
+        { opacity: 1, transform: 'translateY(0)' },
+        { opacity: 0, transform: 'translateY(-6px)' },
+      ], { duration: 400, fill: 'forwards', easing: 'ease-in' });
     });
-    this._later(INTRO_MS + 850, () => {
+    this._later(INTRO_MS + 860, () => {
       layer.classList.add('hidden');
       this._introPlaying = false;
     });
   }
 
-  // Salida: el orbe se estira en barra y desaparece.
+  // Salida: el orbe viaja al centro, se despliega en barra píldora y se desvanece.
   _playOutro(center) {
     const layer = this.querySelector('#morph-layer');
     const shape = layer.querySelector('.morph-shape');
     layer.classList.remove('hidden');
     const dx = center.x - window.innerWidth / 2;
     const dy = center.y - window.innerHeight / 2;
-    const at = (extra) => `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) ${extra}`;
+    // El orbe se expande desde la esquina hacia el centro formando la píldora y se desvanece
     this._animate(shape, [
-      { transform: at('scale(1)'), opacity: 1 },
-      { transform: at(`scale(${BAR_SCALE_X.toFixed(3)}, ${BAR_SCALE_Y.toFixed(3)})`), opacity: 0 },
-    ], { duration: 750, easing: 'cubic-bezier(0.4, 0, 0.6, 1)', fill: 'forwards' });
-    this._later(800, () => layer.classList.add('hidden'));
+      { width: `${ORB_CORE_SIZE}px`, height: `${ORB_CORE_SIZE}px`, borderRadius: '999px',
+        transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`, opacity: 1, offset: 0 },
+      { width: '88px', height: '88px', borderRadius: '999px',
+        transform: `translate(-50%, -50%) scale(1)`, opacity: 1, offset: 0.35 },
+      { width: `${BAR_WIDTH}px`, height: `${BAR_HEIGHT}px`, borderRadius: '32px',
+        transform: 'translate(-50%, -50%) scale(1)', opacity: 0.85, offset: 0.70 },
+      { width: `${BAR_WIDTH}px`, height: `${BAR_HEIGHT}px`, borderRadius: '32px',
+        transform: 'translate(-50%, -50%) scale(0.96)', opacity: 0, offset: 1.0 },
+    ], { duration: 720, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+    const facets = shape.querySelector('.morph-orb');
+    if (facets) {
+      this._animate(facets, [
+        { opacity: 1, transform: 'translate(-50%, -50%) rotate(0deg)', offset: 0 },
+        { opacity: 1, transform: 'translate(-50%, -50%) rotate(30deg)', offset: 0.35 },
+        { opacity: 0, transform: 'translate(-50%, -50%) rotate(60deg)', offset: 0.55 },
+        { opacity: 0, transform: 'translate(-50%, -50%) rotate(60deg)', offset: 1.0 },
+      ], { duration: 720, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+    }
+    this._later(780, () => layer.classList.add('hidden'));
   }
 
   _computePosition(width = WINDOW_WIDTH, height = WINDOW_HEIGHT) {

@@ -70,7 +70,7 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] Overlay como cliente del WS del gateway: `voice.status` → escuchando, `wake.detected` → escuchando, sin repetir la intro (#11, #14; falta probarlo con el gateway real)
 - [x] Hooks `pre/post_tool_call` → actuando; turnos → pensando / hablando
 - [x] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
-- [ ] Pulir la animación de la transformación barra ↔ orbe
+- [x] Pulir la animación de la transformación barra ↔ orbe
 - [x] `/hermis` como slash command: estado, activar/desactivar el modo y un chequeo de instalación (voz, wake word, computer use)
 - [ ] La demo completa corre de punta a punta al menos una vez
 - [ ] *(Opcional, si sobra tiempo)* primer acercamiento a Spotify

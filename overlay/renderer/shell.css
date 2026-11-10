@@ -281,12 +281,48 @@ lumen-orb.autopilot .orb-container.orb-state-idle .orb-lines {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: var(--orb-size);
-  height: var(--orb-size);
+  /* Base size matches <lumen-orb> core (r=38 in 140 viewBox → 52px at 96px).
+     JS animates width/height/borderRadius from pill (520×64, 32px) to orb (52×52, 999px). */
+  width: 52px;
+  height: 52px;
   border-radius: 999px;
-  background: radial-gradient(circle at 35% 30%, #9ADCFB 0, #0071E3 50%, #00306B 100%);
-  box-shadow: 0 0 60px rgba(0, 113, 227, 0.55);
+  background: radial-gradient(circle at 35% 30%, #dff8ff 0%, #7ddcff 28%, #1c8fff 62%, #0a3c9a 100%);
+  box-shadow:
+    inset 0 -4px 12px rgba(10, 60, 154, 0.35),
+    inset 0 2px 6px rgba(255, 255, 255, 0.25),
+    0 0 28px rgba(90, 200, 250, 0.55),
+    0 0 56px rgba(0, 113, 227, 0.4);
   opacity: 0;
+}
+
+.morph-shape::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  left: 22%;
+  width: 38%;
+  height: 28%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0) 100%);
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+
+/* Orbe facetado real dentro de la esfera: 140/76 ≈ 184% del alto, así el
+   núcleo (r=38) calza con el borde de la esfera; a 52px mide 96px, igual que
+   <lumen-orb>, y el traspaso final no tiene salto. Aparece al cerrarse la barra. */
+.morph-orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 184.2%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 0 20px var(--lumen-glow));
 }
 
 .morph-bar-label {
@@ -311,7 +347,8 @@ lumen-orb.autopilot .orb-container.orb-state-idle .orb-lines {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #9ADCFB 0, #0071E3 60%, #00306B 100%);
+  background: radial-gradient(circle at 35% 30%, #dff8ff 0%, #7ddcff 30%, #1c8fff 65%, #0a3c9a 100%);
+  box-shadow: 0 0 12px rgba(90, 200, 250, 0.65);
   flex-shrink: 0;
 }
 
