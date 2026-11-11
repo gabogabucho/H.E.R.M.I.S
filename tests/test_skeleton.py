@@ -65,6 +65,8 @@ class SkeletonTest(unittest.TestCase):
             guide = [m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID]
             self.assertEqual(guide[0]["surface"], "cards")
             self.assertIn("PRIMERA VEZ", out["welcome"])
+            self.assertIn("welcome", out["reply"])  # primera vez: reply delega en la bienvenida
+            self.assertNotIn("¿Qué hacemos hoy?", out["reply"])
             # Todo configurado: el checklist técnico no molesta.
             self.assertFalse([m for m in sent if m.get("surface") == "setup"])
             st = ws_server.load_state()
@@ -77,6 +79,8 @@ class SkeletonTest(unittest.TestCase):
             tools.autopilot({"state": "off"})
             out_again = json.loads(tools.autopilot({"state": "on"}))
             self.assertNotIn("welcome", out_again)
+            # Ya no es la primera vez: la respuesta corta manda.
+            self.assertIn("¿Qué hacemos hoy?", out_again["reply"])
             self.assertFalse([m for m in sent if m.get("id") == hermis.welcome.WELCOME_ID])
             # /hermis setup sigue a mano.
             tools.show_setup()
@@ -140,6 +144,9 @@ class SkeletonTest(unittest.TestCase):
 
     def test_schema_and_validation(self) -> None:
         self.assertEqual(schemas.AUTOPILOT_SCHEMA["name"], "autopilot")
+        # El modo es forma de responder y mostrar, no permisos ni autonomía.
+        self.assertIn("never grants extra permissions", schemas.AUTOPILOT_SCHEMA["description"])
+        self.assertIn("'reply' instruction", schemas.AUTOPILOT_SCHEMA["description"])
         self.assertEqual(schemas.RENDER_SURFACE_SCHEMA["name"], "render_surface")
         self.assertEqual(schemas.CLOSE_SURFACE_SCHEMA["name"], "close_surface")
         self.assertEqual(schemas.LIST_SURFACES_SCHEMA["name"], "list_surfaces")
@@ -211,6 +218,26 @@ class SkeletonTest(unittest.TestCase):
         self.assertEqual(sent, [{"type": "close", "id": "all"}, {"type": "mode", "autopilot": False}])
         self.assertEqual(ws_server.load_state().get("surfaces"), {})
 
+    def test_autopilot_result_carries_a_short_reply(self) -> None:
+        # Ya onboarded: entrar pide una sola frase, sin explicar el modo.
+        out_on = json.loads(tools.autopilot({"state": "on"}))
+        self.assertIn("¿Qué hacemos hoy?", out_on["reply"])
+        self.assertIn("una frase", out_on["reply"])
+        self.assertNotIn("welcome", out_on)
+        # Salir: una frase corta de despedida.
+        out_off = json.loads(tools.autopilot({"state": "off"}))
+        self.assertIn("salí del piloto automático", out_off["reply"])
+        # Primera vez: reply delega en la bienvenida para que se hable una sola vez.
+        ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}})
+        all_ok = {"title": "Configuración de H.E.R.M.I.S", "subtitle": "Todo listo.",
+                  "items": [{"id": "overlay", "label": "Overlay", "status": "ok", "detail": "Listo."}]}
+        with patch.object(tools, "_safe_broadcast", return_value=(1, None)), \
+             patch.object(hermis.setup_checks, "surface_data", return_value=all_ok):
+            out_first = json.loads(tools.autopilot({"state": "on"}))
+        self.assertIn("welcome", out_first["reply"])
+        self.assertNotIn("¿Qué hacemos hoy?", out_first["reply"])
+        self.assertIn("PRIMERA VEZ", out_first["welcome"])
+
     def test_day2_autopilot_surfaces_and_pre_llm_call(self) -> None:
         # Sin estado inicial, pre_llm_call no inyecta nada
         self.assertIsNone(tools.pre_llm_call())
@@ -219,6 +246,7 @@ class SkeletonTest(unittest.TestCase):
         ap_on = json.loads(tools.autopilot({"state": "on"}))
         self.assertTrue(ap_on["ok"])
         self.assertTrue(ap_on["autopilot"])
+        self.assertIn("¿Qué hacemos hoy?", ap_on["reply"])  # respuesta corta para este turno
 
         # Renderizar las superficies nuevas de Día 2
         emails = json.loads(tools.render_surface({
@@ -255,6 +283,8 @@ class SkeletonTest(unittest.TestCase):
         self.assertIsInstance(hook_res, dict)
         ctx_text = hook_res["context"]  # type: ignore[index]
         self.assertIn("Modo Piloto Automático ACTIVO", ctx_text)
+        # El modo es una forma de responder y mostrar, nunca permisos ni autonomía.
+        self.assertIn("no da permisos ni autonomía extra", ctx_text)
         self.assertIn("render_surface", ctx_text)
         self.assertIn("email_list", ctx_text)
         self.assertIn("artifact", ctx_text)
@@ -276,6 +306,7 @@ class SkeletonTest(unittest.TestCase):
         # Apagar autopilot limpia todo y pre_llm_call vuelve a None
         ap_off = json.loads(tools.autopilot({"state": "off"}))
         self.assertFalse(ap_off["autopilot"])
+        self.assertIn("salí del piloto automático", ap_off["reply"])
         self.assertIsNone(tools.pre_llm_call())
 
     def test_broadcast_takes_over_dead_owner(self) -> None:

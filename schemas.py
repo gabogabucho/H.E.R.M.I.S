@@ -28,7 +28,11 @@ AUTOPILOT_SCHEMA = _schema(
     "'exit autopilot'. When 'on', "
     "the desktop overlay morphs into the floating orb and Hermes speaks short "
     "voice replies while drawing rich data surfaces on screen via render_surface. "
-    "When 'off', clears open surfaces and returns to normal mode.",
+    "When 'off', clears open surfaces and returns to normal mode. Autopilot Mode "
+    "only changes HOW Hermes replies and shows data (short spoken replies plus "
+    "on-screen surfaces); it never grants extra permissions, autonomy, or "
+    "overrides the user's rules. Follow the 'reply' instruction in the tool "
+    "result when answering that same turn.",
     {
         "state": {
             "type": "string",
