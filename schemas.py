@@ -131,18 +131,24 @@ LAYOUT_WINDOWS_SCHEMA = _schema(
 
 LAUNCH_APP_SCHEMA = _schema(
     "launch_app",
-    "Launch a desktop application on Windows by name or alias without using a shell "
-    "(e.g. 'notepad' / 'bloc de notas', 'calc' / 'calculadora', 'explorer' / 'explorador', "
-    "'chrome', 'edge', 'code' / 'vscode', 'excel', 'word', 'powershell', 'spotify').",
+    "Open a desktop application on Windows by name or alias (e.g. 'notepad' / 'bloc de notas', "
+    "'calc' / 'calculadora', 'explorer' / 'explorador', 'chrome', 'edge', 'code' / 'vscode', "
+    "'excel', 'word', 'spotify', or Microsoft Store apps by name). It opens apps; it does NOT run "
+    "commands: shells, interpreters and script hosts (cmd, powershell, wsl, python, node, ...) and "
+    "path values are rejected. Apps in the safe allowlist open without confirmation only when called "
+    "with no arguments; with arguments, or for any app outside the allowlist, Hermes asks the user "
+    "for confirmation first (only exception without asking: a browser with exactly one http/https "
+    "URL argument).",
     {
         "app": {
             "type": "string",
-            "description": "Application name or alias to launch.",
+            "description": "Application name or alias to open (a name, never a path).",
         },
         "args": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Optional command-line arguments (e.g. file path or URL).",
+            "description": "Optional arguments (e.g. a URL for a browser). Any arguments trigger a "
+                           "user confirmation, unless it is exactly one http/https URL passed to a browser.",
         },
     },
     required=["app"],

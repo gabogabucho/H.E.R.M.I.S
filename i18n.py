@@ -105,9 +105,9 @@ def hermes_home() -> Path:
 def read_hermes_config() -> dict[str, Any] | None:
     """config.yaml de Hermes, o None si no se puede leer."""
     try:
-        import yaml  # viene con Hermes; si falta, se degrada al idioma base
+        import hermes_yaml  # helper de la instalación de Hermes; si falta, se degrada
 
-        raw = yaml.safe_load((hermes_home() / "config.yaml").read_text(encoding="utf-8"))
+        raw = hermes_yaml.safe_load((hermes_home() / "config.yaml").read_text(encoding="utf-8"))
         return raw if isinstance(raw, dict) else {}
     except Exception:
         return None

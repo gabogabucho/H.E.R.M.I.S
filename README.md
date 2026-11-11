@@ -82,6 +82,7 @@ Everything the plugin does outside of plain Python tool calls:
 - A daemon thread in the Hermes process runs a WebSocket server bound to **127.0.0.1 only**, on an ephemeral port, protected by a per-session token. Only the overlay connects to it.
 - When Autopilot turns on (or on the first surface drawn with no overlay connected), the plugin starts the Electron overlay as a **detached background process** via `npm start`. On the first run it runs `npm ci` first. Disable with `HERMIS_OVERLAY_AUTOSTART=0`.
 - `launch_app` starts the requested app as a detached process. It never uses `shell=True`.
+- Every child process — `npm ci`/`npm start`, the Electron overlay, apps opened with `launch_app` and the read-only `Get-StartApps` lookup — runs with a **reduced environment**: only an allowlist of system variables (PATH, PATHEXT, ComSpec, Windows and user-profile paths, program folders, proxy settings), and `HERMES_HOME`. The gateway connection overrides (`HERMES_GATEWAY_*`, `HERMES_API_*`) are passed only to the overlay process itself, never to `npm ci`, PowerShell or launched apps. Provider API keys and every other environment variable are never inherited.
 
 **Network**
 - `npm ci` (first run only) downloads the pinned overlay dependencies from the npm registry, including the Electron binary. Nothing binary is committed to this repo.
@@ -108,12 +109,12 @@ Everything the plugin does outside of plain Python tool calls:
 **Desktop control**
 - The overlay is a transparent, always-on-top, full-screen window. Clicks pass through wherever nothing is drawn.
 - `layout_windows` moves, resizes, focuses and minimizes **your real windows** via `user32`. Windows running as administrator cannot be moved (Windows UIPI).
-- `launch_app` resolves apps through `PATH`, the `App Paths` registry key (read-only) and `System32`. Apps without an `.exe` there (Microsoft Store apps such as WhatsApp) are looked up in the Start menu list with `powershell.exe Get-StartApps` (read-only, cached for 10 minutes) and opened with `explorer.exe shell:AppsFolder\<app id>`; the id always comes from that system list, never from the request text.
+- `launch_app` resolves apps through `PATH`, the `App Paths` registry key (read-only) and `System32`. Apps without an `.exe` there (Microsoft Store apps such as WhatsApp) are looked up in the Start menu list with `powershell.exe Get-StartApps` (read-only, cached for 10 minutes) and opened with `explorer.exe shell:AppsFolder\<app id>`; the id always comes from that system list, never from the request text. It only accepts **names**: `app` values with paths or URLs are rejected, and so are shells, interpreters and script hosts (`cmd`, `powershell`, `wsl`, `python`, `node`, ...), checked against both the requested name and the resolved executable. A fixed `pre_tool_call` policy gates every call: allowlisted apps open without asking only with no arguments (and a browser with exactly one http/https URL); with any other arguments, or for any app outside the allowlist, Hermes asks for your confirmation first.
 
 **Agent context**
-- `pre_llm_call` adds the Autopilot instructions and a cached list of open surfaces and windows to the turn. It never captures the screen.
+- `pre_llm_call` adds the Autopilot instructions and a cached list of open surfaces and windows to the turn. **While Autopilot Mode is active, the titles of up to 15 open windows are included and sent to your model provider on every turn** while the mode stays on (they live only in the local cache otherwise). It never captures the screen.
 - `post_llm_call` copies `html`/`svg` code blocks from the reply to the overlay, only while Autopilot is on.
-- `pre_tool_call` / `post_tool_call` / `post_llm_call` only observe turn and tool activity to animate the orb. They never change arguments or results.
+- `post_tool_call` / `post_llm_call` only observe turn and tool activity to animate the orb. They never change arguments or results. `pre_tool_call` also observes activity, and additionally enforces the `launch_app` policy described above: it can veto a launch (shells, interpreters, paths) or escalate it to Hermes' human-approval gate; for every other tool it only observes.
 
 **Files** (in the Hermes plugin data directory for `hermis`)
 - `state.json`: Autopilot on/off and the open surfaces.

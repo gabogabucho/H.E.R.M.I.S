@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from . import bootstrap_lock, i18n, ws_server
+from . import bootstrap_lock, child_env, i18n, ws_server
 
 logger = logging.getLogger("hermis")
 
@@ -259,6 +259,7 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
                 try:
                     result = subprocess.run([npm, "ci"], cwd=str(overlay_path),
                                             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                            env=child_env.minimal_env(),
                                             timeout=_INSTALL_TIMEOUT_S, **_detach_kwargs())
                     if result.returncode != 0:
                         log.write(f"\n[hermis] npm ci failed with exit code {result.returncode}\n"
@@ -277,7 +278,9 @@ def _launch_pipeline(npm: str, overlay_path: Path, data_dir: Path, installing: b
             try:
                 process = subprocess.Popen([npm, "start", "--", "--data-dir", str(data_dir)],
                                            cwd=str(overlay_path), stdin=subprocess.DEVNULL,
-                                           stdout=log, stderr=subprocess.STDOUT, **_detach_kwargs())
+                                           stdout=log, stderr=subprocess.STDOUT,
+                                           env=child_env.minimal_env(child_env.OVERLAY_GATEWAY_VARS),
+                                           **_detach_kwargs())
             except Exception:
                 _bootstrap_failed("launch_failed", data_dir)
                 return
