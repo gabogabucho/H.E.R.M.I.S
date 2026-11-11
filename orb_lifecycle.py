@@ -1,10 +1,19 @@
-"""Best-effort process-local orb observations, never agent directives."""
+"""Best-effort process-local orb observations, never agent directives.
+
+The single exception is ``pre_tool_call`` for ``launch_app``: it returns the
+pure launch policy decision (block shells/paths, or ask the user for approval)
+so Hermes gates the call. Observation still happens first, unchanged.
+"""
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Any
 
+from . import launch_policy
 from . import ws_server
+
+logger = logging.getLogger("hermis")
 
 _lock = threading.Lock()
 _turns: dict[tuple[str, str, str], set[str]] = {}
@@ -83,8 +92,17 @@ def pre_llm_call(**kwargs: Any) -> None:
     _observe("turn_start", **kwargs)
 
 
-def pre_tool_call(**kwargs: Any) -> None:
+def pre_tool_call(**kwargs: Any) -> dict[str, str] | None:
     _observe("tool_start", **kwargs)
+    if kwargs.get("tool_name") != "launch_app":
+        return None
+    try:
+        return launch_policy.launch_policy(kwargs.get("args"))
+    except Exception:
+        # Nunca silenciar un fallo de la política: ante la duda, se pide
+        # aprobación (la tool igual rechaza shells y rutas por su cuenta).
+        logger.exception("launch_policy falló; se pide aprobación por defecto")
+        return {"action": "approve", "message": "H.E.R.M.I.S quiere abrir una aplicación"}
 
 
 def post_tool_call(**kwargs: Any) -> None:

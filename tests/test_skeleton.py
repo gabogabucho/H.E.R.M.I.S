@@ -48,6 +48,12 @@ class SkeletonTest(unittest.TestCase):
         ws_server._ready.clear()
         # Estos tests prueban el modo ya configurado; el onboarding tiene los suyos.
         ws_server.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True})
+        # Fuera de Hermes `hermes_yaml` no es importable y la config real de la
+        # máquina ya no se lee: español fijo, sin depender del entorno local.
+        spanish = patch.object(hermis.i18n, "read_hermes_config",
+                               return_value={"stt": {"language": "es"}})
+        spanish.start()
+        self.addCleanup(spanish.stop)
         # Nunca leer las ventanas reales del escritorio de quien corre los tests.
         windows = patch.object(win32_windows, "list_open_windows", return_value=[])
         windows.start()
@@ -604,6 +610,8 @@ class AutostartTest(unittest.TestCase):
             patch.object(overlay_launcher.shutil, "which", lambda cmd: f"C:\\fake\\{cmd}.exe"),
             patch.object(overlay_launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "v22.12.0")),
             patch.object(overlay_launcher, "_overlay_dir", self.fake_overlay),
+            # Español fijo: hermes_yaml no es importable fuera de Hermes.
+            patch.object(hermis.i18n, "read_hermes_config", return_value={"stt": {"language": "es"}}),
         ]
         for p in self.patches:
             p.start()

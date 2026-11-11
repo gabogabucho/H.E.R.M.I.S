@@ -18,6 +18,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import child_env
+from . import launch_policy
+
 LAYOUTS = ("split", "grid", "maximize", "focus", "minimize_others")
 
 # Títulos de ventanas del sistema o del propio overlay que nunca deben moverse.
@@ -45,10 +48,6 @@ APP_ALIASES: dict[str, str] = {
     "file explorer": "explorer.exe",
     "paint": "mspaint.exe",
     "mspaint": "mspaint.exe",
-    "cmd": "cmd.exe",
-    "terminal": "wt.exe",
-    "windows terminal": "wt.exe",
-    "powershell": "powershell.exe",
     "code": "code",
     "vscode": "code",
     "visual studio code": "code",
@@ -561,6 +560,7 @@ def _start_apps() -> list[tuple[str, str]]:
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
              "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress"],
             capture_output=True, text=True, timeout=15,
+            env=child_env.minimal_env(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         raw = json.loads(out.stdout or "[]")
@@ -592,6 +592,8 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
 
     Primero un ``.exe`` resoluble; si no hay, una app del menú Inicio (las de la
     Microsoft Store, como WhatsApp, no tienen ``.exe`` en PATH ni en App Paths).
+    Rechaza por su cuenta rutas, shells, intérpretes y script hosts (la política
+    del hook es otra capa: la tool no depende de ella).
     """
     if not is_windows():
         return {
@@ -600,7 +602,18 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
             "message": "launch_app requiere Windows",
         }
     exe = resolve_executable(app_name)
+    reason = launch_policy.reject_reason(app_name, exe)
+    if reason:
+        return {
+            "ok": False,
+            "error": "blocked_app",
+            "message": reason,
+        }
     start_app = None if exe else find_start_app(app_name)
+    if start_app:
+        reason = launch_policy.reject_start_app(*start_app)
+        if reason:
+            return {"ok": False, "error": "blocked_app", "message": reason}
     if not exe and not start_app:
         return {
             "ok": False,
@@ -624,6 +637,7 @@ def launch_application(app_name: str, args: list[str] | None = None) -> dict[str
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=child_env.minimal_env(),
             creationflags=creationflags,
         )
         out: dict[str, Any] = {

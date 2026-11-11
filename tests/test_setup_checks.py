@@ -23,6 +23,14 @@ def by_id(items):
 
 
 class SetupChecksTest(unittest.TestCase):
+    def setUp(self):
+        # Español fijo: hermes_yaml no es importable fuera de Hermes y la config
+        # real de la máquina ya no se lee en los tests.
+        p = patch.object(hermis.i18n, "read_hermes_config",
+                         return_value={"stt": {"language": "es"}})
+        p.start()
+        self.addCleanup(p.stop)
+
     def run_with(self, config, modules=(), env=None, node=True, node_modules=True, gestures=False):
         def has_module(name):
             return name in modules

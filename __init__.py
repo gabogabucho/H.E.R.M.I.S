@@ -18,6 +18,8 @@ from . import schemas
 from . import tools
 from . import ws_server
 from . import commands
+from . import launch_policy
+from . import child_env
 from . import orb_lifecycle
 from . import artifact_bridge
 from . import welcome
