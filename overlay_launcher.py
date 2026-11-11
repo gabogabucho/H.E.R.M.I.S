@@ -18,6 +18,9 @@ procesos). Reglas:
 - A held native lock serializes cooperating hosts using the same overlay
   installation, through installation and the owned npm wrapper's lifetime.
   The identity file is never deleted as a stale-lock recovery mechanism.
+
+Los textos que ve el usuario salen del catálogo (messages/*.json): cada
+detalle lleva su clave y se resuelve en el idioma de la interfaz.
 """
 from __future__ import annotations
 
@@ -35,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from . import bootstrap_lock, ws_server
+from . import bootstrap_lock, i18n, ws_server
 
 logger = logging.getLogger("hermis")
 
@@ -55,17 +58,19 @@ _pipeline_busy = False
 _launch_process: subprocess.Popen | None = None
 _bootstrap_guard: BinaryIO | None = None
 _bootstrap: dict[str, Any] = {"phase": "idle", "error": None, "started_at": 0}
+# Código de fallo → clave del catálogo. El texto vive en un solo lugar y sale
+# en el idioma de la interfaz.
 _ERROR_DETAILS = {
-    "install_failed": "La instalación falló. Revisa la conexión a npm y vuelve a intentar.",
-    "install_timeout": "La instalación excedió el tiempo disponible. Revisa la conexión antes de reintentar.",
-    "install_denied": "No se pudo ejecutar la instalación. Revisa los permisos de Node/npm y del plugin.",
-    "launch_failed": "No se pudo iniciar Electron. Revisa los permisos y vuelve a intentar.",
-    "launch_exited": "El proceso de inicio terminó con un error. El reintento reinstala las dependencias.",
-    "startup_timeout": "No se verificó una conexión del overlay dentro de 30 segundos.",
-    "process_unknown": "No se pudo verificar si el proceso de inicio sigue activo. No se iniciará otro.",
-    "storage_failed": "No se pudo escribir en el directorio de datos del plugin. Revisa sus permisos.",
-    "worker_failed": "No se pudo iniciar el trabajo en segundo plano. Vuelve a intentar.",
-    "lock_failed": "No se pudo bloquear la instalación del overlay. Revisa los permisos del directorio del plugin.",
+    "install_failed": "launcher.error.install_failed",
+    "install_timeout": "launcher.error.install_timeout",
+    "install_denied": "launcher.error.install_denied",
+    "launch_failed": "launcher.error.launch_failed",
+    "launch_exited": "launcher.error.launch_exited",
+    "startup_timeout": "launcher.error.startup_timeout",
+    "process_unknown": "launcher.error.process_unknown",
+    "storage_failed": "launcher.error.storage_failed",
+    "worker_failed": "launcher.error.worker_failed",
+    "lock_failed": "launcher.error.lock_failed",
 }
 
 
@@ -87,12 +92,16 @@ def _process_running(process: subprocess.Popen | None) -> bool:
         return True  # Unknown ownership is not permission to start a duplicate.
 
 
-def bootstrap_status() -> dict[str, Any]:
+def bootstrap_status(locale: str | None = None) -> dict[str, Any]:
     """Return a read-only local snapshot; a started process is not a connection."""
+    loc = locale or i18n.get_locale()
     if ws_server.overlay_connected():
-        return {"phase": "connected", "error": None, "detail": "Overlay conectado en este proceso.", "retryable": False}
+        return {"phase": "connected", "error": None,
+                "detail": i18n.t("launcher.detail.connected", loc), "retryable": False}
+
     if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
-        return {"phase": "disabled", "error": None, "detail": "Inicio automático desactivado por HERMIS_OVERLAY_AUTOSTART=0.", "retryable": False}
+        return {"phase": "disabled", "error": None,
+                "detail": i18n.t("launcher.detail.disabled", loc), "retryable": False}
     with _launch_lock:
         status = dict(_bootstrap)
         process, busy = _launch_process, _pipeline_busy
@@ -107,23 +116,25 @@ def bootstrap_status() -> dict[str, Any]:
             elif time.monotonic() - status["started_at"] >= _STARTUP_TIMEOUT_S:
                 status.update(phase="failed", error="startup_timeout")
     status.pop("started_at", None)
-    status["detail"] = _ERROR_DETAILS.get(status["error"], "Conexión no verificada en este proceso.")
+    detail_key = _ERROR_DETAILS.get(status["error"], "launcher.detail.unverified")
     if status["phase"] == "busy":
-        status["detail"] = "Otra instancia está usando esta instalación del overlay. Vuelve a intentar cuando termine."
+        detail_key = "launcher.detail.busy"
     running = _process_running(process)
     status["retryable"] = not busy and not running and status["phase"] in {"idle", "failed"}
+    parts = [detail_key]
     if status["phase"] == "failed" and running:
-        status["detail"] += " El proceso sigue activo o no se pudo verificar su salida; no se iniciará otro."
+        parts.append("launcher.detail.failed_running")
     elif status["phase"] == "failed" and status["retryable"]:
-        status["detail"] += " Vuelve a intentar con /hermis retry."
+        parts.append("launcher.detail.failed_retry")
+    status["detail"] = " ".join(i18n.t(key, loc) for key in parts)
     return status
 
 
-def bootstrap_summary() -> str:
-    status = bootstrap_status()
+def bootstrap_summary(locale: str | None = None) -> str:
+    status = bootstrap_status(locale)
     code = f" ({status['error']})" if status["error"] else ""
     exit_code = f" [exit {status['exit_code']}]" if "exit_code" in status else ""
-    return f"{status['phase']}{code}{exit_code}: {status['detail']}"
+    return f"{status['phase']}{code}{exit_code}: {status.get('detail', '')}"
 
 
 def _bootstrap_failed(code: str, data_dir: Path, exit_code: int | None = None) -> None:
@@ -137,28 +148,30 @@ def _bootstrap_failed(code: str, data_dir: Path, exit_code: int | None = None) -
             (data_dir / _LAUNCH_FILE).unlink(missing_ok=True)
 
 
-def runtime_status() -> dict[str, Any]:
+def runtime_status(locale: str | None = None) -> dict[str, Any]:
     """Inspect PATH and a bounded Node version probe without installing anything."""
+    loc = locale or i18n.get_locale()
     node, npm = shutil.which("node"), shutil.which("npm")
     status: dict[str, Any] = {"node": node, "npm": npm, "version": None, "error": None}
-    requirement = f"Node.js >= {NODE_REQUIREMENT} y npm"
+    requirement = i18n.t("launcher.requirement", loc, version=NODE_REQUIREMENT)
     if not node or not npm:
-        status["error"] = f"Se requiere {requirement} en PATH para iniciar el overlay."
+        status["error"] = i18n.t("launcher.error.node_missing", loc, requirement=requirement)
         return status
     try:
         result = subprocess.run([node, "--version"], stdin=subprocess.DEVNULL,
                                 capture_output=True, text=True, timeout=5, **_detach_kwargs())
     except (OSError, subprocess.TimeoutExpired):
-        status["error"] = f"No se pudo verificar Node.js. Se requiere {requirement}; revisa la instalación y PATH."
+        status["error"] = i18n.t("launcher.error.node_unverified", loc, requirement=requirement)
         return status
     match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", result.stdout.strip()) if result.returncode == 0 else None
     if match is None:
-        status["error"] = f"No se pudo verificar una versión estable de Node.js. Se requiere {requirement}."
+        status["error"] = i18n.t("launcher.error.node_version", loc, requirement=requirement)
         return status
     version = tuple(map(int, match.groups()))
     status["version"] = "v" + ".".join(map(str, version))
     if version < MIN_NODE_VERSION:
-        status["error"] = f"Node.js {status['version']} no es compatible. Se requiere {requirement}."
+        status["error"] = i18n.t("launcher.error.node_incompatible", loc,
+                                version=status["version"], requirement=requirement)
     return status
 
 
@@ -223,7 +236,7 @@ def needs_install(overlay_path: Path) -> bool:
 
 def _write_deps_marker(overlay_path: Path) -> None:
     digest = _lock_digest(overlay_path)
-    if digest is None:
+    if not digest:
         return
     try:
         (overlay_path / "node_modules" / _DEPS_MARKER).write_text(digest, encoding="utf-8")
@@ -293,12 +306,13 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
     activo (se lanzó hace menos de 90 s) o pipeline en curso.
     """
     global _last_launch, _pipeline_busy, _bootstrap, _launch_process, _bootstrap_guard
+    loc = i18n.get_locale()
     if os.environ.get("HERMIS_OVERLAY_AUTOSTART") == "0":
         return None
-    snapshot = bootstrap_status()
+    snapshot = bootstrap_status(loc)
     if snapshot["phase"] == "connected":
         return None
-    runtime = runtime_status()
+    runtime = runtime_status(loc)
     if runtime["error"]:
         return runtime["error"]
     npm = runtime["npm"]
@@ -318,10 +332,10 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
             _bootstrap_guard = bootstrap_lock.acquire(_overlay_dir)
         except OSError:
             _bootstrap = {"phase": "failed", "error": "lock_failed", "started_at": 0}
-            return _ERROR_DETAILS["lock_failed"]
+            return i18n.t("launcher.error.lock_failed", loc)
         if _bootstrap_guard is None:
             _bootstrap = {"phase": "busy", "error": None, "started_at": 0}
-            return "Otra instancia está usando esta instalación del overlay. Vuelve a intentar cuando termine."
+            return i18n.t("launcher.detail.busy", loc)
         _last_launch = now
         _pipeline_busy = True
         _launch_process = None
@@ -339,7 +353,7 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
         with _launch_lock:
             _pipeline_busy = False
             _release_bootstrap_guard()
-        return _ERROR_DETAILS["storage_failed"]
+        return i18n.t("launcher.error.storage_failed", loc)
     try:
         threading.Thread(target=_launch_pipeline, args=(npm, _overlay_dir, data_dir, installing),
                          daemon=True, name="hermis-overlay-launch").start()
@@ -348,9 +362,9 @@ def ensure_overlay_running(*, retry: bool = False) -> str | None:
         with _launch_lock:
             _pipeline_busy = False
             _release_bootstrap_guard()
-        return _ERROR_DETAILS["worker_failed"]
+        return i18n.t("launcher.error.worker_failed", loc)
     if installing and updating:
-        return "abriendo el overlay; actualiza sus dependencias (~1 min)"
+        return i18n.t("launcher.note.installing_update", loc)
     if installing:
-        return "abriendo el overlay; la primera vez instala dependencias (~1 min)"
-    return "abriendo el overlay…"
+        return i18n.t("launcher.note.installing_first", loc)
+    return i18n.t("launcher.note.starting", loc)

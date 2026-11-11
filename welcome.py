@@ -5,6 +5,9 @@ que dibuja el plugin y la indicación para que Hermes lo explique por voz, así
 un gesto nuevo aparece en las dos sin copiar textos. El comportamiento de cada
 gesto vive en el overlay (overlay/renderer/shell.js).
 
+Los textos salen del catálogo (messages/*.json) para que la guía exista en el
+idioma de la interfaz, no solo en español.
+
 Se muestra la primera vez que se entra al modo y con /hermis tour. La parte
 hablada se dice una sola vez: ``tour_pending`` se apaga al terminar el turno.
 """
@@ -12,55 +15,61 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import ws_server
+from . import i18n, ws_server
 
 WELCOME_ID = "hermis-welcome"
 
+# (emoji, clave del nombre, clave de la descripción) en el catálogo.
 GESTURES: tuple[tuple[str, str, str], ...] = (
-    ("✊", "Puño (sostenido)", "Cierra la superficie de adelante; sin superficies, minimiza la ventana activa"),
-    ("👋", "Deslizar ← / →", "Pasa a la superficie anterior o siguiente; sin superficies, cambia de ventana"),
-    ("✋", "Palma (sostenida)", "Oculta o muestra las superficies; sin superficies, muestra el escritorio"),
+    ("✊", "welcome.gesture.fist.name", "welcome.gesture.fist.what"),
+    ("👋", "welcome.gesture.swipe.name", "welcome.gesture.swipe.what"),
+    ("✋", "welcome.gesture.palm.name", "welcome.gesture.palm.what"),
 )
 
+# (clave del ejemplo, clave de la explicación) en el catálogo.
 PHRASES: tuple[tuple[str, str], ...] = (
-    ("Muéstrame…", "Datos, una tabla, un gráfico o un documento flotando en pantalla"),
-    ("Abre X y ponlo al lado de Y", "Abre apps y acomoda tus ventanas"),
-    ("Cierra eso / Cierra todo", "Cierra lo que está en pantalla"),
-    ("Sal del piloto automático", "Vuelve al Hermes de siempre"),
+    ("welcome.phrase.show.title", "welcome.phrase.show.what"),
+    ("welcome.phrase.layout.title", "welcome.phrase.layout.what"),
+    ("welcome.phrase.close.title", "welcome.phrase.close.what"),
+    ("welcome.phrase.exit.title", "welcome.phrase.exit.what"),
 )
 
 
-def guide_data(gestures_on: bool) -> dict[str, Any]:
+def guide_data(gestures_on: bool, locale: str | None = None) -> dict[str, Any]:
     """Datos de la superficie ``cards`` con la guía rápida."""
+    loc = locale or i18n.get_locale()
     items: list[dict[str, str]] = [
-        {"badge": "Di", "title": phrase, "body": what} for phrase, what in PHRASES
+        {"badge": i18n.t("welcome.badge_say", loc), "title": i18n.t(title, loc), "body": i18n.t(what, loc)}
+        for title, what in PHRASES
     ]
-    items += [{"badge": emoji, "title": name, "body": what} for emoji, name, what in GESTURES]
+    items += [
+        {"badge": emoji, "title": i18n.t(name, loc), "body": i18n.t(what, loc)}
+        for emoji, name, what in GESTURES
+    ]
     if not gestures_on:
         items.append({
-            "badge": "📷",
-            "title": "Gestos apagados",
-            "body": "Actívalos con /hermis gestures on. La cámara funciona solo en el modo piloto "
-                    "y las imágenes nunca salen de tu PC.",
+            "badge": i18n.t("welcome.gestures_off_badge", loc),
+            "title": i18n.t("welcome.gestures_off_title", loc),
+            "body": i18n.t("welcome.gestures_off_body", loc),
         })
-    return {"title": "Guía rápida del Modo Piloto", "items": items}
+    return {"title": i18n.t("welcome.guide_title", loc), "items": items}
 
 
-def voice_instruction(gestures_on: bool) -> str:
+def voice_instruction(gestures_on: bool, locale: str | None = None) -> str:
     """Indicación para que Hermes presente el modo por voz (una sola vez)."""
-    gestures = "; ".join(f"{name.lower()}: {what.lower()}" for _, name, what in GESTURES)
+    loc = locale or i18n.get_locale()
+    gestures = "; ".join(
+        f"{i18n.t(name, loc).lower()}: {i18n.t(what, loc).lower()}" for _, name, what in GESTURES
+    )
     if gestures_on:
-        about = f"Los gestos con cámara están activos; nombra cada uno con su función en una sola frase ({gestures})."
+        about = i18n.t("welcome.voice.gestures_on", loc, gestures=gestures)
     else:
-        about = "Menciona que puede activar gestos con cámara con /hermis gestures on."
-    return ("Es la PRIMERA VEZ que el usuario usa el Modo Piloto Automático: además de responder, preséntate en "
-            "2 o 3 frases habladas y explica cómo se usa: puede pedirte que le muestres cosas en pantalla, que abras "
-            f"y acomodes apps, que cierres lo que hay y que salgas del modo. {about} En pantalla tiene una guía "
-            "rápida; no la leas entera.")
+        about = i18n.t("welcome.voice.gestures_off", loc)
+    return i18n.t("welcome.voice.intro", loc, about=about)
 
 
-def entry(gestures_on: bool) -> dict[str, Any]:
-    return {"id": WELCOME_ID, "surface": "cards", "data": guide_data(gestures_on)}
+def entry(gestures_on: bool, locale: str | None = None) -> dict[str, Any]:
+    return {"id": WELCOME_ID, "surface": "cards", "data": guide_data(gestures_on, locale)}
 
 
 def post_llm_call(**kwargs: Any) -> None:

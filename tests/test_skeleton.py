@@ -95,17 +95,20 @@ class SkeletonTest(unittest.TestCase):
 
     def test_welcome_guide_explains_every_gesture_from_one_source(self) -> None:
         for gestures_on in (True, False):
-            data = hermis.welcome.guide_data(gestures_on)
+            data = hermis.welcome.guide_data(gestures_on, "es")
             titles = [item["title"] for item in data["items"]]
-            for emoji, name, what in hermis.welcome.GESTURES:
-                self.assertIn(name, titles)
-            voice = hermis.welcome.voice_instruction(gestures_on)
+            bodies = [item["body"] for item in data["items"]]
+            # Los gestos salen del catálogo: la guía y la voz hablan de lo mismo.
+            for emoji, name_key, what_key in hermis.welcome.GESTURES:
+                self.assertIn(hermis.i18n.t(name_key, "es"), titles)
+                self.assertIn(hermis.i18n.t(what_key, "es"), bodies)
+            voice = hermis.welcome.voice_instruction(gestures_on, "es")
             if gestures_on:
-                for _, name, what in hermis.welcome.GESTURES:
-                    self.assertIn(what.lower(), voice)
+                for _, name_key, what_key in hermis.welcome.GESTURES:
+                    self.assertIn(hermis.i18n.t(what_key, "es").lower(), voice)
             else:
                 self.assertIn("/hermis gestures on", voice)
-                self.assertIn("Gestos apagados", titles)
+                self.assertIn(hermis.i18n.t("welcome.gestures_off_title", "es"), titles)
 
     def test_tour_command_replays_the_welcome(self) -> None:
         sent: list[dict] = []
@@ -296,8 +299,14 @@ class SkeletonTest(unittest.TestCase):
             async with connect(f"ws://{info['host']}:{info['port']}") as client:
                 await client.send(json.dumps({"type": "hello", "token": info["token"]}))
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
-                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
-                                 {"type": "mode", "autopilot": False})
+                # El idioma llega primero: el overlay dibuja en el idioma correcto
+                # desde el primer mensaje.
+                lang = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(lang["type"], "i18n")
+                self.assertIn(lang["locale"], ("es", "en"))
+                self.assertTrue(lang["strings"])
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))["type"],
+                                 "mode")
                 self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
                                  {"type": "gestures", "enabled": False})
                 self.assertEqual(ws_server.broadcast({"type": "render", "surface": "notification",
@@ -372,8 +381,14 @@ class SkeletonTest(unittest.TestCase):
             async with connect(f"ws://{info['host']}:{info['port']}") as client:
                 await client.send(json.dumps({"type": "hello", "token": info["token"]}))
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
-                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
-                                 {"type": "mode", "autopilot": False})
+                # El idioma llega primero: el overlay dibuja en el idioma correcto
+                # desde el primer mensaje.
+                lang = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(lang["type"], "i18n")
+                self.assertIn(lang["locale"], ("es", "en"))
+                self.assertTrue(lang["strings"])
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))["type"],
+                                 "mode")
                 self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
                                  {"type": "gestures", "enabled": False})
 
@@ -404,8 +419,12 @@ class SkeletonTest(unittest.TestCase):
             async with connect(uri) as client:
                 await client.send(json.dumps({"type": "hello", "token": info["token"]}))
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
+                lang = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(lang["type"], "i18n")
                 mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
-                self.assertEqual(mode, {"type": "mode", "autopilot": True})
+                self.assertEqual(mode["type"], "mode")
+                self.assertTrue(mode["autopilot"])
+                self.assertEqual(mode["locale"], lang["locale"])
                 gestures_sync = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(gestures_sync, {"type": "gestures", "enabled": False})
                 rend1 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
@@ -457,8 +476,11 @@ class SkeletonTest(unittest.TestCase):
                 ack = json.loads(await client.recv())
                 self.assertEqual(ack, {"type": "hello_ok"})
                 # Sincronización al conectar: modo actual de state.json
+                sync_lang = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(sync_lang["type"], "i18n")
                 sync_mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
-                self.assertEqual(sync_mode, {"type": "mode", "autopilot": False})
+                self.assertEqual(sync_mode["type"], "mode")
+                self.assertFalse(sync_mode["autopilot"])
                 sync_gestures = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(sync_gestures, {"type": "gestures", "enabled": False})
 

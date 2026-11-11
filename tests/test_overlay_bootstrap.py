@@ -44,7 +44,7 @@ class BootstrapTest(unittest.TestCase):
             mock.start()
             self.addCleanup(mock.stop)
         self.addCleanup(launcher._release_bootstrap_guard)
-        hermis.ws_server.save_state({"autopilot": True, "onboarded": True, "seq": 1,
+        hermis.ws_server.save_state({"autopilot": True, "onboarded": True, "seq": 1, "locale": "en",
                                     "surfaces": {"doc": {"id": "doc", "surface": "document", "data": {"title": "Keep"}}}})
         self.before = (self.directory / "state.json").read_bytes()
 

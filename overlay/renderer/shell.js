@@ -61,8 +61,8 @@ const MORPH_ORB_SVG = `
 const BAR_SCALE_X = 520 / ORB_SIZE;
 const BAR_SCALE_Y = 64 / ORB_SIZE;
 const INTRO_MS = 2400;
-const INTRO_TEXT = '¿Qué hacemos hoy?';
-const BAR_HINT = 'Pregúntale algo a Hermes…';
+const introText = () => t('overlay.intro_text', 'What are we doing today?');
+const barHint = () => t('overlay.bar_hint', 'Ask Hermes something…');
 const WINDOW_MARGIN = 20;
 const WINDOW_WIDTH = 480;
 const WINDOW_HEIGHT = 320;
@@ -71,6 +71,31 @@ const ARTIFACT_WIDTH = 720;
 const ARTIFACT_HEIGHT = 520;
 const NOTIF_LIFETIME_MS = 4000;
 const NOTIF_LEVELS = ['info', 'success', 'error'];
+
+// =============================================
+// i18n: el idioma y los textos llegan por el WebSocket del plugin (mensaje
+// 'i18n'), porque la CSP del overlay no le permite leer archivos. El fallback
+// en inglés es el idioma base del producto y solo se usa si el overlay
+// dibuja antes de que el plugin conteste.
+// =============================================
+const I18N = { locale: 'es', strings: {} };
+
+function t(key, fallback) {
+  const value = I18N.strings[key];
+  if (typeof value === 'string' && value) return value;
+  return fallback !== undefined ? fallback : key;
+}
+
+function applyI18n(msg) {
+  if (!msg || typeof msg !== 'object') return false;
+  const locale = typeof msg.locale === 'string' && msg.locale ? msg.locale : I18N.locale;
+  const strings = (msg.strings && typeof msg.strings === 'object') ? msg.strings : {};
+  const changed = locale !== I18N.locale;
+  I18N.locale = locale;
+  I18N.strings = strings;
+  try { document.documentElement.lang = locale; } catch (e) { /* sin DOM */ }
+  return changed;
+}
 
 // =============================================
 // Gestos v1 (MediaPipe, todo local): la cámara se prende SOLO con el modo
@@ -266,14 +291,14 @@ class LumenWindow extends HTMLElement {
   }
 
   _render() {
-    const title = this.getAttribute('title') || 'Ventana';
+    const title = this.getAttribute('title') || t('overlay.window_title', 'Window');
     this.style.width = `${this._width}px`;
     this.style.height = `${this._height}px`;
 
     this.innerHTML = `
       <div class="window-header">
         <span class="window-title">${escapeHtml(title)}</span>
-        <button class="window-close" aria-label="Cerrar">×</button>
+        <button class="window-close" aria-label="${escapeHtml(t('overlay.close', 'Close'))}">×</button>
       </div>
       <div class="window-content">
         <slot></slot>
@@ -356,7 +381,7 @@ class LumenWindow extends HTMLElement {
   attributeChangedCallback(name, oldVal, newVal) {
     if (name === 'title' && oldVal !== newVal) {
       const el = this.querySelector('.window-title');
-      if (el) el.textContent = newVal || 'Ventana';
+      if (el) el.textContent = newVal || t('overlay.window_title', 'Window');
     }
   }
 }
@@ -404,8 +429,8 @@ function formatEmailDate(raw) {
   if (/^\w{3},\s+\d{1,2}\s+\w{3}\s+\d{4}\b/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }) + ' ' +
-        d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      return d.toLocaleDateString(I18N.locale, { day: 'numeric', month: 'short' }) + ' ' +
+        d.toLocaleTimeString(I18N.locale, { hour: '2-digit', minute: '2-digit', hour12: false });
     }
   }
   return s;
@@ -590,7 +615,7 @@ function renderWeb(body, data) {
   const btn = document.createElement('button');
   btn.className = 'web-open';
   btn.type = 'button';
-  btn.textContent = 'Abrir en el navegador';
+  btn.textContent = t('overlay.open_in_browser', 'Open in browser');
   btn.addEventListener('click', () => {
     window.hermis.openExternal(url).catch((e) => console.warn('[shell] no se pudo abrir:', e && e.message));
   });
@@ -679,12 +704,12 @@ function renderSetup(body, data) {
       const copy = document.createElement('button');
       copy.type = 'button';
       copy.className = 'setup-copy';
-      copy.textContent = 'Copiar';
+      copy.textContent = t('overlay.copy', 'Copy');
       copy.addEventListener('click', () => {
         window.hermis.copyText(item.fix).then((ok) => {
-          copy.textContent = ok ? 'Copiado' : 'No se pudo';
-          setTimeout(() => { copy.textContent = 'Copiar'; }, 1500);
-        }).catch(() => { copy.textContent = 'No se pudo'; });
+          copy.textContent = ok ? t('overlay.copied', 'Copied') : t('overlay.copy_failed', 'Could not copy');
+          setTimeout(() => { copy.textContent = t('overlay.copy', 'Copy'); }, 1500);
+        }).catch(() => { copy.textContent = t('overlay.copy_failed', 'Could not copy'); });
       });
       fix.append(code, copy);
       text.appendChild(fix);
@@ -696,10 +721,10 @@ function renderSetup(body, data) {
   const refresh = document.createElement('button');
   refresh.type = 'button';
   refresh.className = 'web-open setup-refresh';
-  refresh.textContent = 'Volver a revisar';
+  refresh.textContent = t('overlay.refresh_setup', 'Check again');
   refresh.addEventListener('click', () => {
-    refresh.textContent = 'Revisando…';
-    window.hermis.refreshSetup().catch(() => { refresh.textContent = 'Volver a revisar'; });
+    refresh.textContent = t('overlay.reviewing', 'Checking…');
+    window.hermis.refreshSetup().catch(() => { refresh.textContent = t('overlay.refresh_setup', 'Check again'); });
   });
   body.appendChild(refresh);
   return true;
@@ -715,15 +740,32 @@ const SURFACE_RENDERERS = {
   artifact: renderArtifact,
 };
 
-const SURFACE_TITLES = {
-  setup: 'Configuración',
-  email_list: 'Correos',
-  table: 'Tabla',
-  cards: 'Tarjetas',
-  image: 'Imagen',
-  web: 'Enlace',
-  artifact: 'Artefacto',
+const SURFACE_TITLE_KEYS = {
+  setup: 'overlay.surface.setup',
+  email_list: 'overlay.surface.email_list',
+  table: 'overlay.surface.table',
+  cards: 'overlay.surface.cards',
+  image: 'overlay.surface.image',
+  web: 'overlay.surface.web',
+  artifact: 'overlay.surface.artifact',
 };
+
+// Fallback en inglés (idioma base) mientras el plugin no manda el catálogo.
+const SURFACE_TITLES = {
+  setup: 'Setup',
+  email_list: 'Emails',
+  table: 'Table',
+  cards: 'Cards',
+  image: 'Image',
+  web: 'Link',
+  artifact: 'Artifact',
+};
+
+function surfaceTitle(surface) {
+  const key = SURFACE_TITLE_KEYS[surface];
+  if (!key) return surface;
+  return t(key, SURFACE_TITLES[surface]);
+}
 
 // =============================================
 // <lumen-shell>
@@ -755,13 +797,13 @@ class LumenShell extends HTMLElement {
   _render() {
     this.innerHTML = `
       <lumen-orb id="orb" state="idle"></lumen-orb>
-      <div id="camera-indicator" class="camera-indicator hidden" title="Cámara activa (procesamiento local)"></div>
+      <div id="camera-indicator" class="camera-indicator hidden" title="${escapeHtml(t('overlay.camera_active', 'Camera active (local processing)'))}"></div>
       <div id="windows-container"></div>
       <div id="notifications-container"></div>
       <div id="morph-layer" class="hidden">
         <div class="morph-veil"></div>
         <div class="morph-shape">${MORPH_ORB_SVG}</div>
-        <div class="morph-bar-label">${escapeHtml(BAR_HINT)}</div>
+        <div class="morph-bar-label">${escapeHtml(barHint())}</div>
         <div class="morph-text"></div>
       </div>
     `;
@@ -771,6 +813,11 @@ class LumenShell extends HTMLElement {
   _handleMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     switch (msg.type) {
+      case 'i18n':
+        // El plugin manda el idioma y sus textos: es lo primero que llega al
+        // conectarse, así que las superficies ya se dibujan en el idioma bueno.
+        if (applyI18n(msg)) this._relocalize();
+        break;
       case 'render':
         this._handleRender(msg.surface, msg.data, msg.id);
         break;
@@ -845,7 +892,7 @@ class LumenShell extends HTMLElement {
     span.textContent = text;
     const close = document.createElement('button');
     close.className = 'notification-close';
-    close.setAttribute('aria-label', 'Cerrar');
+    close.setAttribute('aria-label', t('overlay.close', 'Close'));
     close.textContent = '×';
     close.addEventListener('click', () => el.remove());
     el.append(span, close);
@@ -860,10 +907,10 @@ class LumenShell extends HTMLElement {
     }
     const winEl = document.createElement('lumen-window');
     winEl.setAttribute('window-id', id);
-    winEl.setAttribute('title', data.title || 'Documento');
+    winEl.setAttribute('title', data.title || t('overlay.document_title', 'Document'));
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
     winEl.addEventListener('mousedown', () => this._setFrontWindow(id));
-    const record = { el: winEl, kind: 'document' };
+    const record = { el: winEl, kind: 'document', data };
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
@@ -885,10 +932,10 @@ class LumenShell extends HTMLElement {
     }
     const winEl = document.createElement('lumen-window');
     winEl.setAttribute('window-id', id);
-    winEl.setAttribute('title', data.title || SURFACE_TITLES[surface] || surface);
+    winEl.setAttribute('title', data.title || surfaceTitle(surface));
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
     winEl.addEventListener('mousedown', () => this._setFrontWindow(id));
-    const record = { el: winEl, kind: surface };
+    const record = { el: winEl, kind: surface, data };
     if (surface === 'artifact') winEl.setSize(ARTIFACT_WIDTH, ARTIFACT_HEIGHT);
     const pos = this._computePosition(winEl._width, winEl._height);
     winEl.setPosition(pos.x, pos.y);
@@ -940,6 +987,23 @@ class LumenShell extends HTMLElement {
     }
   }
 
+  // Cambió el idioma: se redibujan las superficies abiertas con los textos nuevos.
+  _relocalize() {
+    for (const record of this.windows.values()) {
+      const data = record.data;
+      if (!data) continue;
+      const titled = typeof data.title === 'string' && data.title;
+      if (!titled && SURFACE_TITLE_KEYS[record.kind]) {
+        record.el.setAttribute('title', surfaceTitle(record.kind));
+      }
+      this._setWindowBody(record, record.kind, data);
+    }
+    const dot = this.querySelector('#camera-indicator');
+    if (dot) dot.setAttribute('title', t('overlay.camera_active', 'Camera active (local processing)'));
+    const label = this.querySelector('.morph-bar-label');
+    if (label) label.textContent = barHint();
+  }
+
   updateWindow(id, kind, data) {
     const record = this.windows.get(id);
     if (!record) return;
@@ -947,6 +1011,7 @@ class LumenShell extends HTMLElement {
     if (typeof data.title === 'string' && data.title) {
       record.el.setAttribute('title', data.title);
     }
+    record.data = data;
     this._setWindowBody(record, kind, data);
     this._setFrontWindow(id);
   }
@@ -1137,7 +1202,9 @@ class LumenShell extends HTMLElement {
   // Foco local: deslizar trae la superficie anterior/siguiente al frente.
   _focusSurface(dir) {
     if (!this._surfacesVisible()) {
-      this._windowGesture(dir > 0 ? 'next' : 'prev', dir > 0 ? '➡️ Ventana siguiente' : '⬅️ Ventana anterior');
+      this._windowGesture(dir > 0 ? 'next' : 'prev', dir > 0
+        ? `➡️ ${t('overlay.gesture.next_window', 'Next window')}`
+        : `⬅️ ${t('overlay.gesture.prev_window', 'Previous window')}`);
       return;
     }
     const ids = Array.from(this.windows.keys());
@@ -1146,7 +1213,8 @@ class LumenShell extends HTMLElement {
     if (idx === -1) idx = ids.length - 1;
     idx = (idx + dir + ids.length) % ids.length;
     this._setFrontWindow(ids[idx]);
-    this._toast(dir > 0 ? '➡️ Siguiente' : '⬅️ Anterior');
+    this._toast(dir > 0 ? `➡️ ${t('overlay.gesture.next', 'Next')}`
+                        : `⬅️ ${t('overlay.gesture.prev', 'Previous')}`);
   }
 
   _setFrontWindow(id) {
@@ -1160,7 +1228,7 @@ class LumenShell extends HTMLElement {
   // (gesture.close → close_surface), así Hermes sabe qué quedó en pantalla.
   _closeFrontSurface() {
     if (!this._surfacesVisible()) {
-      this._windowGesture('minimize', '✊ Minimizar ventana');
+      this._windowGesture('minimize', `✊ ${t('overlay.gesture.minimize_window', 'Minimize window')}`);
       return;
     }
     let id = this._frontWindowId;
@@ -1168,7 +1236,7 @@ class LumenShell extends HTMLElement {
     if (!id) return;
     try { window.hermis.gestureClose(id); } catch (e) { console.warn('[gestos] no se pudo avisar al plugin:', e.message); }
     this.closeWindow(id);
-    this._toast('✊ Cerrar');
+    this._toast(`✊ ${t('overlay.gesture.close', 'Close')}`);
   }
 
   // ✋: con superficies, toggle local de todas (notificaciones no, son efímeras);
@@ -1176,13 +1244,17 @@ class LumenShell extends HTMLElement {
   _toggleSurfacesHidden() {
     if (this.windows.size === 0) {
       this._desktopShown = !this._desktopShown;
-      this._windowGesture('desktop', this._desktopShown ? '✋ Escritorio' : '✋ Restaurar ventanas');
+      this._windowGesture('desktop', this._desktopShown
+        ? `✋ ${t('overlay.gesture.desktop', 'Desktop')}`
+        : `✋ ${t('overlay.gesture.restore_windows', 'Restore windows')}`);
       return;
     }
     this._gesturesHidden = !this._gesturesHidden;
     const container = this.querySelector('#windows-container');
     if (container) container.classList.toggle('hidden', this._gesturesHidden);
-    this._toast(this._gesturesHidden ? '✋ Ocultar' : '✋ Mostrar');
+    this._toast(this._gesturesHidden
+      ? `✋ ${t('overlay.gesture.hide', 'Hide')}`
+      : `✋ ${t('overlay.gesture.show', 'Show')}`);
   }
 
   _toast(text, level = 'info') {
@@ -1272,7 +1344,7 @@ class LumenShell extends HTMLElement {
     this._introPlaying = true;
     orb.classList.remove('autopilot');
     orb.style.opacity = '0';
-    text.textContent = INTRO_TEXT;
+    text.textContent = introText();
     layer.classList.remove('hidden');
 
     const c = this._orbCenter();

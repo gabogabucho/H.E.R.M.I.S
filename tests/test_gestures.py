@@ -94,13 +94,26 @@ class GesturesStateTest(unittest.TestCase):
         self.assertFalse(STATE.load_state()["gestures"])
 
     def test_connect_sync_includes_gestures_message(self):
-        STATE.save_state({"autopilot": True, "seq": 0, "surfaces": {}, "gestures": True})
+        STATE.save_state({"autopilot": True, "seq": 0, "surfaces": {}, "gestures": True,
+                          "locale": "en"})
         conn = _FakeConn([json.dumps({"type": "hello", "token": "tok-test"})])
         asyncio.run(STATE._handler(conn))
         msgs = [json.loads(t) for t in conn.sent]
         self.assertEqual(msgs[0], {"type": "hello_ok"})
         self.assertIn({"type": "gestures", "enabled": True}, msgs)
-        self.assertIn({"type": "mode", "autopilot": True}, msgs)
+        self.assertIn({"type": "mode", "autopilot": True, "locale": "en"}, msgs)
+
+    def test_connect_sync_sends_the_language_before_anything_is_drawn(self):
+        # El overlay dibuja en el idioma de la interfaz: el idioma y sus textos
+        # tienen que llegar antes que cualquier superficie.
+        STATE.save_state({"autopilot": True, "seq": 0, "surfaces": {}, "locale": "es"})
+        conn = _FakeConn([json.dumps({"type": "hello", "token": "tok-test"})])
+        asyncio.run(STATE._handler(conn))
+        msgs = [json.loads(t) for t in conn.sent]
+        self.assertEqual(msgs[1]["type"], "i18n")
+        self.assertEqual(msgs[1]["locale"], "es")
+        self.assertEqual(msgs[1]["strings"]["overlay.copy"], "Copiar")
+        self.assertEqual(msgs[2]["type"], "mode")
 
     def test_connect_sync_sends_gestures_off_by_default(self):
         STATE.save_state({"autopilot": True, "seq": 0, "surfaces": {}})
@@ -160,7 +173,8 @@ class GesturesCommandTest(unittest.TestCase):
         self.override = patch.dict(STATE._STATE, data_dir_override=self.tmp.name)
         self.override.start()
         self.addCleanup(self.override.stop)
-        STATE.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True})
+        STATE.save_state({"autopilot": False, "seq": 0, "surfaces": {}, "onboarded": True,
+                          "locale": "en"})
         self.path = Path(self.tmp.name) / "state.json"
 
     def dispatch(self, args):

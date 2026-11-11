@@ -31,6 +31,7 @@ class CommandTest(unittest.TestCase):
             "autopilot": True, "seq": 1,
             "surfaces": {"doc": {"id": "doc", "surface": "document", "data": {"title": "Notes"}}},
             "onboarded": True,  # el onboarding tiene sus propios tests
+            "locale": "en",  # idioma fijo: los tests no dependen de la config local
         })
         self.path = Path(self.tmp.name) / "state.json"
 
@@ -41,7 +42,8 @@ class CommandTest(unittest.TestCase):
         registration = ctx.register_command.call_args
         self.assertIsNotNone(registration, "register() must expose /hermis")
         self.assertEqual(registration.kwargs["name"], "hermis")
-        self.assertEqual(registration.kwargs["args_hint"], "[status|on|off|check|setup|retry|tour|gestures on|off]")
+        self.assertEqual(registration.kwargs["args_hint"],
+                         "[status|on|off|check|setup|retry|tour|lang es|en|reset|gestures on|off]")
         return registration.kwargs["handler"](args)
 
     def test_command_status_is_read_only(self):
@@ -90,7 +92,7 @@ class CommandTest(unittest.TestCase):
         for completed in (False, True):
             with self.subTest(welcome_completed=completed):
                 state = {"autopilot": False, "seq": 0, "surfaces": {},
-                         "onboarded": completed, "gestures": False}
+                         "onboarded": completed, "gestures": False, "locale": "en"}
                 hermis.ws_server.save_state(state)
                 sent = []
                 checklist = {"items": [], "title": "Setup", "subtitle": "Checked"}

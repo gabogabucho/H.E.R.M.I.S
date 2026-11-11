@@ -71,24 +71,24 @@ class SetupChecksTest(unittest.TestCase):
         # El Desktop guarda "leer en voz alta" localmente; la config solo no alcanza.
         items = self.run_with({"voice": {"auto_tts": False}, "tts": {"provider": "edge"}})
         self.assertEqual(items["tts"]["status"], "info")
-        self.assertIn("activá el parlante", items["tts"]["detail"])
+        self.assertIn("turn on the speaker", items["tts"]["detail"])
         self.assertIn("hermes config set voice.auto_tts true", items["tts"]["fix"])
         # El paso fijo explica dónde están los toggles que el plugin no puede leer.
         desktop = items["desktop"]["detail"]
-        for hint in ("This device", "la oreja", "el parlante", "botón negro"):
+        for hint in ("This device", "the ear", "the speaker", "black button"):
             self.assertIn(hint, desktop)
         self.assertNotIn("fix", items["desktop"])
 
     def test_gestures_item_is_informative_and_off_by_default(self):
         items = self.run_with({})
         self.assertEqual(items["gestures"]["status"], "info")
-        self.assertEqual(items["gestures"]["label"], "Gestos con cámara (opcional)")
+        self.assertEqual(items["gestures"]["label"], "Camera gestures (optional)")
         self.assertEqual(items["gestures"]["fix"], "/hermis gestures on")
 
     def test_gestures_item_shows_enabled_state_without_command(self):
         items = self.run_with({}, gestures=True)
         self.assertEqual(items["gestures"]["status"], "ok")
-        self.assertIn("modo piloto", items["gestures"]["detail"])
+        self.assertIn("autopilot mode", items["gestures"]["detail"])
         self.assertNotIn("fix", items["gestures"])
 
     def test_configured_machine_is_all_ok(self):
@@ -126,19 +126,26 @@ class SetupChecksTest(unittest.TestCase):
 
     def test_surface_summary_does_not_treat_information_as_verified_readiness(self):
         cases = (
-            (["ok"], "Chequeos completados sin faltantes detectados."),
-            (["ok", "info"], "No se detectaron faltantes. Revisa las indicaciones de los pasos informativos."),
-            (["warn", "info", "warn"], "2 paso(s) pendiente(s). Consulta las indicaciones de cada paso y vuelve a revisar."),
+            (["ok"],
+             "Checks completed with nothing missing.",
+             "Chequeos completados sin faltantes detectados."),
+            (["ok", "info"],
+             "Nothing is missing. Review the instructions of the informational steps.",
+             "No se detectaron faltantes. Revisa las indicaciones de los pasos informativos."),
+            (["warn", "info", "warn"],
+             "2 step(s) pending. Follow the instructions for each step and check again.",
+             "2 paso(s) pendiente(s). Consulta las indicaciones de cada paso y vuelve a revisar."),
         )
-        for statuses, expected in cases:
+        for statuses, expected_en, expected_es in cases:
             with self.subTest(statuses=statuses):
                 items = [{"id": str(i), "label": "Check", "status": status, "detail": "Details"}
                          for i, status in enumerate(statuses)]
                 with patch.object(checks, "run_checks", return_value=items):
-                    data = checks.surface_data()
-                self.assertEqual(data["subtitle"], expected)
-                self.assertEqual(data["items"], items)
-                self.assertEqual(data["title"], "Configuración de H.E.R.M.I.S")
+                    self.assertEqual(checks.surface_data("en")["subtitle"], expected_en)
+                    self.assertEqual(checks.surface_data("es")["subtitle"], expected_es)
+                    self.assertEqual(checks.surface_data("en")["items"], items)
+                self.assertEqual(checks.surface_data("en")["title"], "H.E.R.M.I.S setup")
+                self.assertEqual(checks.surface_data("es")["title"], "Configuración de H.E.R.M.I.S")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import i18n
+
 logger = logging.getLogger("hermis")
 
 _HOST = "127.0.0.1"
@@ -114,6 +116,8 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
                 }
                 if isinstance(raw.get("windows"), list):
                     out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
+                if isinstance(raw.get("locale"), str) and raw["locale"].strip():
+                    out["locale"] = raw["locale"].strip()
                 if raw.get("onboarded"):
                     out["onboarded"] = True
                 if raw.get("tour_pending"):
@@ -129,6 +133,61 @@ def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> Non
     target = _data_dir(data_dir if data_dir is not None else _STATE["data_dir_override"]) / "state.json"
     with _lock:
         _atomic_write_text(target, json.dumps(state, ensure_ascii=False))
+
+
+def i18n_message(locale: str | None = None) -> dict[str, Any]:
+    """Mensaje con el idioma y los textos del overlay.
+
+    El overlay no puede leer archivos (la CSP no le deja hacer fetch), así que
+    el idioma y sus textos viajan por el mismo WebSocket que el resto del
+    estado. Es lo primero que recibe al conectarse: con eso ya dibuja en el
+    idioma correcto.
+    """
+    loc = i18n.normalize_locale(locale) or i18n.get_locale()
+    return {"type": "i18n", "locale": loc, "strings": i18n.overlay_strings(loc)}
+
+
+def set_locale(locale: str | None) -> str:
+    """Fija (o limpia) el idioma de la interfaz y lo difunde al overlay.
+
+    ``None`` borra el override manual y vuelve al idioma de Hermes
+    (``stt.language``). Devuelve el idioma efectivo.
+    """
+    loc = i18n.normalize_locale(locale)
+    st = load_state()
+    if loc:
+        st["locale"] = loc
+    else:
+        st.pop("locale", None)
+    save_state(st)
+    effective = i18n.resolve_locale(st.get("locale"))
+    broadcast(i18n_message(effective))
+    _redraw_localized_surfaces(st, effective)
+    return effective
+
+
+def _redraw_localized_surfaces(st: dict[str, Any], locale: str) -> None:
+    """Vuelve a dibujar las superficies cuyo texto genera el plugin.
+
+    El checklist y la guía se arman en Python: si no se redibujan, quedarían
+    en el idioma anterior hasta el próximo refresh.
+    """
+    surfaces = st.get("surfaces")
+    if not isinstance(surfaces, dict):
+        return
+    with contextlib.suppress(Exception):
+        from . import setup_checks, tools, welcome
+
+        if tools.SETUP_ID in surfaces:
+            data = setup_checks.surface_data(locale)
+            surfaces[tools.SETUP_ID] = {**surfaces[tools.SETUP_ID], "data": data}
+            broadcast({"type": "render", "surface": "setup", "id": tools.SETUP_ID, "data": data})
+        if welcome.WELCOME_ID in surfaces:
+            gestures = bool(st.get("gestures", False))
+            data = welcome.guide_data(gestures, locale)
+            surfaces[welcome.WELCOME_ID] = {**surfaces[welcome.WELCOME_ID], "data": data}
+            broadcast({"type": "render", "surface": "cards", "id": welcome.WELCOME_ID, "data": data})
+        save_state(st)
 
 
 def _handle_client_message(raw: Any) -> None:
@@ -225,10 +284,12 @@ async def _handler(conn: Any) -> None:
                     _send_all(json.dumps(msg["payload"], ensure_ascii=False))
                 await conn.send(json.dumps({"delivered": count}))
         return
-    # Sincronización al conectar: el overlay recupera el estado actual (mode +
-    # gestos + un render por superficie persistida, en orden) antes del stream.
+    # Sincronización al conectar: el overlay recupera el estado actual (idioma +
+    # modo + gestos + un render por superficie persistida, en orden) antes del stream.
     st = load_state()
-    await _safe_send(conn, json.dumps({"type": "mode", "autopilot": bool(st.get("autopilot", False))}))
+    await _safe_send(conn, json.dumps(i18n_message(st.get("locale")), ensure_ascii=False))
+    await _safe_send(conn, json.dumps({"type": "mode", "autopilot": bool(st.get("autopilot", False)),
+                                       "locale": i18n.resolve_locale(st.get("locale"))}))
     await _safe_send(conn, json.dumps({"type": "gestures", "enabled": bool(st.get("gestures", False))}))
     for entry in (st.get("surfaces") or {}).values():
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
