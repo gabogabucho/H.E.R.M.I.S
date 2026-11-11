@@ -3,7 +3,7 @@
 **Fecha límite: miércoles 11/11/2026, 17:00 EST (19:00 hora de Argentina).**
 Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atrasa, se recorta alcance, no se corre la entrega.
 
-> **Estado actual (9/11):** Días 0, 1, 2, 3 y 4 completos ✅ · Día 5 avanzado (reconexión automática del overlay, tools siempre en JSON, onboarding visual `/hermis setup` y suite de 57 tests en verde).
+> **Estado actual (11/11):** Días 0 a 5 completos ✅ · Demo grabada · Día 6 en curso: entrada del catálogo revisada contra el reglamento, falta pinear el SHA final y enviar.
 > Principio del 8/11: el plugin es una **interfaz, no una fuente de datos** (ver `BRIEF.md`).
 
 ---
@@ -72,8 +72,8 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] Intro inmersiva (se oscurece → orbe → "¿Qué hacemos hoy?" → se vuelve transparente)
 - [x] Pulir la animación de la transformación barra ↔ orbe
 - [x] `/hermis` como slash command: estado, activar/desactivar el modo y un chequeo de instalación (voz, wake word, computer use)
-- [ ] La demo completa corre de punta a punta al menos una vez
-- [ ] *(Opcional, si sobra tiempo)* primer acercamiento a Spotify
+- [x] La demo completa corre de punta a punta al menos una vez
+- [x] Spotify en la demo con el plugin de Spotify que ya trae Hermes (sin código nuestro)
 
 **Validación:** el guion entero de la demo funciona sin tocar el teclado.
 
@@ -86,8 +86,8 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - [x] README con instalación y la disclosure completa (procesos en segundo plano, red, shell)
 - [x] Entrada del catálogo lista en `docs/catalog/hermis.yaml` (falta pinear el SHA final)
 - [x] Licencia: MIT (`LICENSE`)
-- [ ] Decidir: `npx electron` o build en GitHub Actions con atestación
-- [ ] Grabar tomas de la demo (varias)
+- [x] Decidido: Electron fijo en `45.2.3` vía `npm ci` en el primer arranque; no hay binarios en el repo, así que no hace falta atestación
+- [x] Grabar tomas de la demo
 
 **Validación:** instalación limpia en otro perfil de Hermes → funciona.
 
@@ -116,4 +116,3 @@ Regla: cada día termina con algo que **se ve funcionando**. Si una fase se atra
 - Superficies editables (el usuario edita y Hermes recibe los cambios)
 - Múltiples monitores
 - Generar superficies nuevas en tiempo de ejecución
-- Spotify (hasta tener el primer acercamiento)

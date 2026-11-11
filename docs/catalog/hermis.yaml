@@ -6,7 +6,6 @@ name: hermis
 title: H.E.R.M.I.S
 repo: https://github.com/gabogabucho/H.E.R.M.I.S
 sha: 0000000000000000000000000000000000000000  # TODO: final commit SHA (40 hex)
-subdir: .
 description: >-
   Disclosure: runs a background WebSocket server on 127.0.0.1 (ephemeral port +
   session token) in a daemon thread; launches a bundled transparent
@@ -35,11 +34,11 @@ maintainer: gabogabucho
 tier: community
 category: desktop
 requires_hermes: ">=0.22"
-version: 0.1.0
+version: "0.1.0"
 platforms:
 - windows
 docs_url: https://github.com/gabogabucho/H.E.R.M.I.S#readme
-readme: README.md
+readme: true
 capabilities:
   provides_tools:
   - autopilot
