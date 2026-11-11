@@ -34,6 +34,22 @@ MAX_ARTIFACT_BYTES = 256 * 1024
 logger = logging.getLogger("hermis")
 SETUP_ID = "hermis-setup"
 
+# Instrucción hablada para el MISMO turno en que se entra o sale del modo:
+# pre_llm_call recién aplica al turno siguiente. Primera vez, la bienvenida
+# ('welcome') ya habla en el turno, así que reply delega y no compite con ella.
+_REPLY_ON = (
+    "Responde solo con: ¿Qué hacemos hoy? (una frase, sin explicar el modo ni enumerar reglas; "
+    "in English: 'What are we doing today?')."
+)
+_REPLY_ON_FIRST_RUN = (
+    "Responde solo con la bienvenida indicada en 'welcome' (sin frases extra ni enumerar reglas; "
+    "reply only with the welcome instruction)."
+)
+_REPLY_OFF = (
+    "Responde con una frase corta, por ejemplo: Listo, salí del piloto automático. "
+    "(in English: 'Done, autopilot is off.')"
+)
+
 
 def _setup_entry() -> dict[str, Any]:
     return {"id": SETUP_ID, "surface": "setup", "data": setup_checks.surface_data()}
@@ -223,6 +239,8 @@ def autopilot(args: dict[str, Any], **kwargs: Any) -> str:
         "delivered": delivered,
         "overlay_connected": delivered > 0,
         "note": note,
+        # Respuesta corta para este turno (evita el párrafo leído en voz alta).
+        "reply": _REPLY_ON_FIRST_RUN if first_run else (_REPLY_ON if active else _REPLY_OFF),
         # Viaja en el resultado para que Hermes lo explique en este mismo turno.
         "welcome": welcome.voice_instruction(bool(st.get("gestures"))) if first_run else None,
     }
@@ -431,6 +449,9 @@ def pre_llm_call(**kwargs: Any) -> dict[str, str] | None:
     if autopilot_on:
         lines.append(
             "[H.E.R.M.I.S — Modo Piloto Automático ACTIVO / Autopilot Mode ACTIVE]\n"
+            "- Qué es / What it is: cambia solo la FORMA de responder y mostrar (voz corta y superficies "
+            "en pantalla); no da permisos ni autonomía extra ni anula las reglas del usuario "
+            "(a reply and display style, never extra permissions or autonomy).\n"
             "- Idioma / Language: responde siempre en el mismo idioma que use el usuario "
             "(si es español, usa español neutro sin modismos regionales ni voseo; if English or another language, reply in that language).\n"
             "- Voz / Voice: responde en 1 o 2 frases cortas pensadas para ser habladas; no leas listas ni markdown en voz alta.\n"
