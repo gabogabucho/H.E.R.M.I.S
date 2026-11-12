@@ -101,6 +101,41 @@ class PreToolCallHookTest(unittest.TestCase):
     def setUp(self):
         test_commands.CommandTest.setUp(self)
 
+    def test_interpreter_variants_are_blocked_by_hook_and_tool(self):
+        names = ("python3.exe", "python3.12.exe", "python3.12w.exe", "powershell_ise.exe")
+        hermis.ws_server.save_state(hermis.ws_server.load_state())
+        before = self.path.read_bytes()
+        for name in names:
+            for requested in (name, "notepad"):
+                with self.subTest(name=name, requested=requested), \
+                     patch.object(hermis.win32_windows, "is_windows", return_value=True), \
+                     patch.object(hermis.win32_windows, "resolve_executable", return_value=f"C:\\bin\\{name}"), \
+                     patch.object(hermis.win32_windows.subprocess, "Popen") as spawn, \
+                     patch.object(hermis.ws_server, "broadcast", return_value=1):
+                    directive = hermis.orb_lifecycle.pre_tool_call(
+                        tool_name="launch_app", args={"app": requested},
+                        **IDENTITY, tool_call_id="variant",
+                    )
+                    self.assertIsNotNone(directive)
+                    self.assertEqual(directive["action"], "block")
+                    result = json.loads(hermis.tools.launch_app({"app": requested}))
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["error"], "blocked_app")
+                    spawn.assert_not_called()
+                    self.assertEqual(self.path.read_bytes(), before)
+
+    def test_node_diagnostic_uses_minimal_environment(self):
+        from subprocess import CompletedProcess
+        fake = {"PATH": "system-path", "OPENAI_API_KEY": "secret", "NODE_OPTIONS": "--require=untrusted", "HERMES_GATEWAY_TOKEN": "ticket"}
+        with patch.dict(os.environ, fake, clear=True), \
+             patch.object(hermis.overlay_launcher.shutil, "which", side_effect=lambda name: name), \
+             patch.object(hermis.overlay_launcher.subprocess, "run", return_value=CompletedProcess([], 0, "v22.12.0")) as run:
+            result = hermis.overlay_launcher.runtime_status()
+        self.assertIsNone(result["error"])
+        self.assertEqual(run.call_args.args[0], ["node", "--version"])
+        self.assertEqual(run.call_args.kwargs.get("env"), {"PATH": "system-path"})
+        self.assertEqual(run.call_args.kwargs["timeout"], 5)
+
     def test_hook_blocks_launch_app_shells(self):
         with patch.object(hermis.ws_server, "broadcast", return_value=1):
             res = hermis.orb_lifecycle.pre_tool_call(

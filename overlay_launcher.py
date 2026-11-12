@@ -159,7 +159,8 @@ def runtime_status(locale: str | None = None) -> dict[str, Any]:
         return status
     try:
         result = subprocess.run([node, "--version"], stdin=subprocess.DEVNULL,
-                                capture_output=True, text=True, timeout=5, **_detach_kwargs())
+                                capture_output=True, text=True, timeout=5,
+                                env=child_env.minimal_env(), **_detach_kwargs())
     except (OSError, subprocess.TimeoutExpired):
         status["error"] = i18n.t("launcher.error.node_unverified", loc, requirement=requirement)
         return status

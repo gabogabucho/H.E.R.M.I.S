@@ -81,7 +81,8 @@ Everything the plugin does outside of plain Python tool calls:
 - Installation checks and automatic overlay launch run `node --version` as a bounded, read-only subprocess. They do not run npm or change dependencies merely to check the runtime.
 - A daemon thread in the Hermes process runs a WebSocket server bound to **127.0.0.1 only**, on an ephemeral port, protected by a per-session token. Only the overlay connects to it.
 - When Autopilot turns on (or on the first surface drawn with no overlay connected), the plugin starts the Electron overlay as a **detached background process** via `npm start`. On the first run it runs `npm ci` first. Disable with `HERMIS_OVERLAY_AUTOSTART=0`.
-- `launch_app` starts the requested app as a detached process. It never uses `shell=True`.
+- `launch_app` starts the requested app as a detached process. It never uses `shell=True`. Interpreter blocking includes versioned/windowless Python executables and PowerShell ISE, for both requested names and resolved executables.
+- The read-only `node --version` probe uses the same minimal child environment, excluding provider keys, gateway tokens and `NODE_OPTIONS`.
 - Every child process — `npm ci`/`npm start`, the Electron overlay, apps opened with `launch_app` and the read-only `Get-StartApps` lookup — runs with a **reduced environment**: only an allowlist of system variables (PATH, PATHEXT, ComSpec, Windows and user-profile paths, program folders, proxy settings), and `HERMES_HOME`. The gateway connection overrides (`HERMES_GATEWAY_*`, `HERMES_API_*`) are passed only to the overlay process itself, never to `npm ci`, PowerShell or launched apps. Provider API keys and every other environment variable are never inherited.
 
 **Network**

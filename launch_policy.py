@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 # nombre pedido Y el ejecutable resuelto (basename sin extensión, minúsculas):
 # un alias que resuelva a uno de estos binarios también se rechaza.
 BLOCKED_EXECUTABLES = frozenset({
-    "cmd", "powershell", "pwsh", "wt", "windowsterminal", "conhost", "wscript",
+    "cmd", "powershell", "powershell_ise", "pwsh", "wt", "windowsterminal", "conhost", "wscript",
     "cscript", "mshta", "rundll32", "regsvr32", "msiexec", "reg", "regedit",
     "schtasks", "sc", "certutil", "bitsadmin", "wmic", "bash", "wsl", "sh",
     "python", "pythonw", "py", "node", "deno", "bun", "java", "javaw", "ruby",
@@ -64,6 +64,12 @@ def _exe_base(name: str) -> str:
     return base
 
 
+def _blocked_executable(name: str) -> bool:
+    base = _exe_base(name)
+    # Python's versioned and windowless executable names are still interpreters.
+    return base in BLOCKED_EXECUTABLES or re.fullmatch(r"pythonw?(?:[0-9]+(?:\.[0-9]+)*)?w?", base) is not None
+
+
 def reject_reason(app: str, resolved: str | None = None) -> str | None:
     """Razón de rechazo para ``launch_app``, o None si el nombre es aceptable."""
     name = str(app).strip()
@@ -72,8 +78,8 @@ def reject_reason(app: str, resolved: str | None = None) -> str | None:
     if is_path_like(name):
         return (f"launch_app solo abre aplicaciones por su nombre; no acepta "
                 f"rutas ni URLs: {name!r}")
-    if _exe_base(name) in BLOCKED_EXECUTABLES or (
-        resolved is not None and _exe_base(resolved) in BLOCKED_EXECUTABLES
+    if _blocked_executable(name) or (
+        resolved is not None and _blocked_executable(resolved)
     ):
         return (f"launch_app no abre shells, intérpretes ni script hosts "
                 f"(para ejecutar comandos, usa la terminal de Hermes con su "
@@ -97,7 +103,7 @@ def reject_start_app(name: str, aumid: str) -> str | None:
     """
     words = set(re.split(r"[^\wáéíóúñ]+", str(name).lower()))
     aumid_l = str(aumid).lower()
-    if (words & _CONSOLE_WORDS or _exe_base(aumid_l) in BLOCKED_EXECUTABLES
+    if (words & _CONSOLE_WORDS or any(_blocked_executable(word) for word in words) or _blocked_executable(aumid_l)
             or "windowsterminal" in aumid_l or "powershell" in aumid_l):
         return (f"launch_app no abre consolas ni shells (para ejecutar comandos, "
                 f"usa la terminal de Hermes con su aprobación): {name!r}")
