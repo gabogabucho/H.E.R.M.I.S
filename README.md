@@ -68,11 +68,18 @@ Everything the plugin does outside of plain Python tool calls:
 
 **Network**
 - `npm ci` (first run only) downloads the pinned overlay dependencies from the npm registry, including the Electron binary. Nothing binary is committed to this repo.
+- Camera gestures (optional, off by default) download the MediaPipe gesture model **once** from `storage.googleapis.com` (see below).
 - The overlay window can load **https images** in `image` surfaces.
 - Artifact surfaces run in a sandboxed frame whose CSP allows scripts only from `cdnjs.cloudflare.com`, `cdn.jsdelivr.net` and `unpkg.com`, and blocks all other connections (`connect-src 'none'`).
 - Links (`web` surfaces, links in documents) open in your **default browser** when you click them. The overlay never browses by itself.
 - To animate the orb, the overlay connects to **your local Hermes gateway**: it asks the gateway's control pipe (Windows named pipe `hermes-gateway-<hash>`, or `gateway.sock` on POSIX) for its address and a short-lived session ticket under your own user identity, then opens the gateway WebSocket (`/api/ws`, by default `127.0.0.1:8642`) and only listens to `voice.status` and `wake.detected`. It sends nothing to the agent. Overrides: `HERMES_GATEWAY_WS_URL` / `HERMES_GATEWAY_URL`, `HERMES_GATEWAY_TOKEN` / `HERMES_API_TOKEN`, `HERMES_API_PORT`.
 - The plugin itself makes no outbound requests.
+
+**Camera gestures (optional)**
+- Off by default. Enable with `/hermis gestures on`. The camera turns on **only** while Autopilot Mode is active, and turns off (all tracks stopped) when you leave the mode or disable gestures. A small green dot next to the orb shows when the camera is on.
+- Frames are processed **locally** by MediaPipe inside the overlay process (GPU when available, CPU fallback). They are never rendered on screen, never stored and never sent anywhere.
+- The first time gestures are enabled, the overlay downloads `gesture_recognizer.task` (~8 MB, Apache-2.0) once from `storage.googleapis.com` into the plugin data directory. Nothing binary is committed to this repo.
+- The model and the MediaPipe WASM reach the renderer only through a private `hermis-media://` protocol with **fixed routes** (no arbitrary file reads). The camera permission is granted only to the overlay's own page and only for **video**.
 
 **Setup checklist** (`/hermis setup` and the first Autopilot run)
 - Reads Hermes `config.yaml` **read-only** and checks whether optional engines are installed. API keys are checked only for **presence** in the process environment; their values and `.env` are never read.

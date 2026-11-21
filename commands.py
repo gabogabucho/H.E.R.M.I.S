@@ -8,14 +8,28 @@ from pathlib import Path
 
 from . import setup_checks, tools, ws_server
 
-USAGE = "Usage: /hermis [status|on|off|check|setup]"
+USAGE = "Usage: /hermis [status|on|off|check|setup|gestures on|off]"
 
 
 def handle(raw_args: str = "") -> str:
     """Return status, switch the mode, inspect local prerequisites, or show the setup checklist."""
-    action = raw_args.strip().lower() or "status"
-    if action not in {"status", "on", "off", "check", "setup"}:
+    parts = raw_args.strip().lower().split()
+    action = parts[0] if parts else "status"
+    if action not in {"status", "on", "off", "check", "setup", "gestures"}:
         return USAGE
+    if action == "gestures":
+        if len(parts) != 2 or parts[1] not in ("on", "off"):
+            return USAGE
+    elif len(parts) > 1:
+        return USAGE
+    if action == "gestures":
+        # Toggle opcional (apagado por defecto): persiste el flag y avisa al overlay.
+        state = parts[1]
+        result = json.loads(tools.set_gestures({"enabled": state == "on"}))
+        if not result.get("ok"):
+            return "Gestures change failed. Check the local plugin logs."
+        connection = "connected" if result.get("overlay_connected") else "not connected"
+        return f"Gestures: {state}\nOverlay: {connection}"
     if action == "setup":
         # Mismo checklist en el chat y en el overlay (con botones Copiar).
         try:
@@ -38,6 +52,7 @@ def handle(raw_args: str = "") -> str:
     lines = [
         f"Autopilot: {'on' if state.get('autopilot') else 'off'}",
         f"Surfaces: {len(state.get('surfaces') or {})}",
+        f"Gestures: {'on' if state.get('gestures') else 'off'}",
         "Overlay connection: not checked (read-only status).",
     ]
     if action == "check":

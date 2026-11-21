@@ -51,6 +51,6 @@ def register(ctx) -> None:
     ctx.register_hook("post_llm_call", orb_lifecycle.post_llm_call)
     ctx.register_command(
         name="hermis", handler=commands.handle,
-        description="Show H.E.R.M.I.S status, switch autopilot, check installation, or open the setup checklist.",
-        args_hint="[status|on|off|check|setup]",
+        description="Show H.E.R.M.I.S status, switch autopilot, toggle camera gestures, check installation, or open the setup checklist.",
+        args_hint="[status|on|off|check|setup|gestures on|off]",
     )

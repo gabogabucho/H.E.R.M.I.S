@@ -246,6 +246,8 @@ class SkeletonTest(unittest.TestCase):
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
                 self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
                                  {"type": "mode", "autopilot": False})
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
+                                 {"type": "gestures", "enabled": False})
                 self.assertEqual(ws_server.broadcast({"type": "render", "surface": "notification",
                                                       "data": {"text": "llegó", "level": "info"}}), 1)
                 msg = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
@@ -320,6 +322,8 @@ class SkeletonTest(unittest.TestCase):
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
                 self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
                                  {"type": "mode", "autopilot": False})
+                self.assertEqual(json.loads(await asyncio.wait_for(client.recv(), timeout=2.0)),
+                                 {"type": "gestures", "enabled": False})
 
         asyncio.run(scenario())
 
@@ -350,6 +354,8 @@ class SkeletonTest(unittest.TestCase):
                 self.assertEqual(json.loads(await client.recv()), {"type": "hello_ok"})
                 mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(mode, {"type": "mode", "autopilot": True})
+                gestures_sync = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(gestures_sync, {"type": "gestures", "enabled": False})
                 rend1 = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(rend1, {
                     "type": "render",
@@ -401,6 +407,8 @@ class SkeletonTest(unittest.TestCase):
                 # Sincronización al conectar: modo actual de state.json
                 sync_mode = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
                 self.assertEqual(sync_mode, {"type": "mode", "autopilot": False})
+                sync_gestures = json.loads(await asyncio.wait_for(client.recv(), timeout=2.0))
+                self.assertEqual(sync_gestures, {"type": "gestures", "enabled": False})
 
                 ap_on = json.loads(tools.autopilot({"state": "on"}))
                 self.assertTrue(ap_on["ok"])

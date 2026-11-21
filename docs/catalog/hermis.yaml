@@ -21,7 +21,11 @@ description: >-
   powershell Get-StartApps lookup + explorer.exe shell:AppsFolder); copies html/svg blocks from
   replies to the overlay via post_llm_call while Autopilot is on; the setup
   checklist reads config.yaml read-only and copies commands to the clipboard on
-  click (never runs them); writes
+  click (never runs them); optional camera gestures (/hermis gestures on) stay
+  off by default, run only during Autopilot Mode, process frames locally by
+  MediaPipe (never rendered, stored or sent), show a green dot while the camera
+  is on, and download the gesture model once from storage.googleapis.com into
+  the plugin data dir; writes
   state.json, overlay.json and overlay.log to the plugin data dir; Windows only.
   Autopilot Mode turns your Windows desktop into an agent OS: Hermes answers by
   voice, draws floating data surfaces over your real desktop (the agent sends

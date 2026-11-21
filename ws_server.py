@@ -8,8 +8,9 @@ queda en loopback — nada escucha en interfaces externas.
 
 Estado Día 2: ``broadcast`` (plugin → overlay) y sincronización al conectar:
 cuando un overlay completa el ``hello``, recibe ``mode`` (estado de
-``state.json``) y un ``render`` por cada superficie activa, en orden. Los
-mensajes posteriores del overlay se ignoran.
+``state.json``), ``gestures`` y un ``render`` por cada superficie activa, en
+orden. Los mensajes del overlay (``setup.refresh``, ``gesture.close``,
+``voice.status``…) corren fuera del loop del WS.
 """
 from __future__ import annotations
 
@@ -109,6 +110,7 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
                     "autopilot": bool(raw.get("autopilot", False)),
                     "seq": int(raw.get("seq", 0)),
                     "surfaces": dict(raw.get("surfaces") or {}) if isinstance(raw.get("surfaces"), dict) else {},
+                    "gestures": bool(raw.get("gestures", False)),
                 }
                 if isinstance(raw.get("windows"), list):
                     out["windows"] = [str(w) for w in raw["windows"] if isinstance(w, str) and w.strip()]
@@ -117,7 +119,7 @@ def load_state(data_dir: Path | str | None = None) -> dict[str, Any]:
                 return out
         except Exception:
             pass
-        return {"autopilot": False, "seq": 0, "surfaces": {}}
+        return {"autopilot": False, "seq": 0, "surfaces": {}, "gestures": False}
 
 
 def save_state(state: dict[str, Any], data_dir: Path | str | None = None) -> None:
@@ -146,6 +148,19 @@ def _handle_client_message(raw: Any) -> None:
                 tools.show_setup()
 
         threading.Thread(target=_refresh, daemon=True, name="hermis-setup-refresh").start()
+    elif msg_type == "gesture.close":
+        # Gesto ✊ del overlay: cierra la superficie de adelante con la misma
+        # lógica que close_surface (state.json + difusión). Fuera del loop del
+        # WS, como setup.refresh: toca disco y difunde.
+        surface_id = msg.get("id")
+        if isinstance(surface_id, str) and surface_id.strip():
+            def _close() -> None:
+                with contextlib.suppress(Exception):
+                    from . import tools
+
+                    tools.close_surface({"id": surface_id.strip()})
+
+            threading.Thread(target=_close, daemon=True, name="hermis-gesture-close").start()
     elif msg_type == "voice.status":
         with contextlib.suppress(Exception):
             from . import orb_lifecycle
@@ -197,9 +212,10 @@ async def _handler(conn: Any) -> None:
                 await conn.send(json.dumps({"delivered": count}))
         return
     # Sincronización al conectar: el overlay recupera el estado actual (mode +
-    # un render por superficie persistida, en orden) antes de pasar al stream.
+    # gestos + un render por superficie persistida, en orden) antes del stream.
     st = load_state()
     await _safe_send(conn, json.dumps({"type": "mode", "autopilot": bool(st.get("autopilot", False))}))
+    await _safe_send(conn, json.dumps({"type": "gestures", "enabled": bool(st.get("gestures", False))}))
     for entry in (st.get("surfaces") or {}).values():
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
             continue

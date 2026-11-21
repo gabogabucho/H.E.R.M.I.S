@@ -8,12 +8,12 @@
     "start": "electron ."
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.1.1",
     "dompurify": "3.4.17",
     "marked": "18.1.1",
     "ws": "8.21.3"
   },
   "devDependencies": {
-    "@mediapipe/tasks-vision": "1.1.1",
     "electron": "45.0.0"
   }
 }

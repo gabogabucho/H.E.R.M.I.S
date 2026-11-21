@@ -834,6 +834,39 @@ lumen-window {
   display: none !important;
 }
 
+/* gestos: toast corto de feedback y punto de cámara activa (privacidad) */
+.gesture-toast {
+  pointer-events: none;
+  padding: 8px 16px;
+  background: var(--lumen-panel-bg);
+  border: 1px solid var(--lumen-panel-border);
+  border-radius: 999px;
+  color: var(--lumen-text);
+  font-size: 0.85rem;
+  box-shadow: var(--lumen-shadow);
+  backdrop-filter: blur(8px);
+  animation: notif-in 0.2s ease, notif-out 0.25s ease 1.35s forwards;
+}
+
+.gesture-toast.level-error {
+  border-color: rgba(255, 55, 95, 0.35);
+  color: #b81237;
+}
+
+.camera-indicator {
+  position: fixed;
+  right: 74px;
+  bottom: 172px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #34c759;
+  box-shadow: 0 0 8px rgba(52, 199, 89, 0.8);
+  z-index: 100;
+  pointer-events: none;
+  animation: orb-fade-in 0.25s ease;
+}
+
 /* setup: checklist del onboarding (solo lectura + botones Copiar) */
 .setup-subtitle {
   font-size: 0.85rem;

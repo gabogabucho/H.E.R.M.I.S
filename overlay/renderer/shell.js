@@ -28,6 +28,22 @@ const ARTIFACT_HEIGHT = 520;
 const NOTIF_LIFETIME_MS = 4000;
 const NOTIF_LEVELS = ['info', 'success', 'error'];
 
+// =============================================
+// Gestos v1 (MediaPipe, todo local): la cámara se prende SOLO con el modo
+// piloto y los gestos activos; los cuadros nunca se muestran ni salen de la PC.
+// Referencia del loop: overlay/dev/gesture-test.js (prueba que funcionó).
+// =============================================
+const GESTURE_MEDIA_BASE = 'hermis-media://tasks-vision';
+const GESTURE_MODEL_URL = 'hermis-media://model/gesture_recognizer.task';
+const GESTURE_SCORE_MIN = 0.7;
+const SWIPE_THRESHOLD = 0.18;  // en la prueba 0.28 casi no disparaba
+const SWIPE_WINDOW_MS = 350;
+const SWIPE_COOLDOWN_MS = 700;
+const FIST_HOLD_MS = 500;
+const PALM_HOLD_MS = 700;
+const HOLD_COOLDOWN_MS = 1500;
+const TOAST_LIFETIME_MS = 1600;
+
 function generateId(prefix = 'win') {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -677,6 +693,11 @@ class LumenShell extends HTMLElement {
     this.autopilot = false;
     this._morphAnims = [];
     this._morphTimers = [];
+    this.gesturesEnabled = false;
+    this._gesturesActive = false;
+    this._gesturesHidden = false;
+    this._frontWindowId = null;
+    this._gestureRuntime = null;
   }
 
   connectedCallback() {
@@ -689,6 +710,7 @@ class LumenShell extends HTMLElement {
   _render() {
     this.innerHTML = `
       <lumen-orb id="orb" state="idle"></lumen-orb>
+      <div id="camera-indicator" class="camera-indicator hidden" title="Cámara activa (procesamiento local)"></div>
       <div id="windows-container"></div>
       <div id="notifications-container"></div>
       <div id="morph-layer" class="hidden">
@@ -718,6 +740,9 @@ class LumenShell extends HTMLElement {
           updatePanelStyle({ opacity: msg.opacity, theme: msg.theme });
         }
         this.setAutopilot(!!msg.autopilot);
+        break;
+      case 'gestures':
+        this.setGesturesEnabled(!!msg.enabled);
         break;
       case 'intro':
       case 'wake':
@@ -792,12 +817,15 @@ class LumenShell extends HTMLElement {
     winEl.setAttribute('window-id', id);
     winEl.setAttribute('title', data.title || 'Documento');
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
+    winEl.addEventListener('mousedown', () => this._setFrontWindow(id));
     const record = { el: winEl, kind: 'document' };
     const pos = this._computePosition();
     winEl.setPosition(pos.x, pos.y);
     this.querySelector('#windows-container').appendChild(winEl);
     this._setWindowBody(record, 'document', data);
     this.windows.set(id, record);
+    this._ensureSurfacesVisible();
+    this._setFrontWindow(id);
     console.log('[shell] surface document dibujada:', id);
     return id;
   }
@@ -814,6 +842,7 @@ class LumenShell extends HTMLElement {
     winEl.setAttribute('window-id', id);
     winEl.setAttribute('title', data.title || SURFACE_TITLES[surface] || surface);
     winEl.addEventListener('window-close', (e) => this.closeWindow(e.detail.id));
+    winEl.addEventListener('mousedown', () => this._setFrontWindow(id));
     const record = { el: winEl, kind: surface };
     if (surface === 'artifact') winEl.setSize(ARTIFACT_WIDTH, ARTIFACT_HEIGHT);
     const pos = this._computePosition(winEl._width, winEl._height);
@@ -821,8 +850,19 @@ class LumenShell extends HTMLElement {
     this.querySelector('#windows-container').appendChild(winEl);
     this._setWindowBody(record, surface, data);
     this.windows.set(id, record);
+    this._ensureSurfacesVisible();
+    this._setFrontWindow(id);
     console.log('[shell] surface dibujada:', surface, id);
     return id;
+  }
+
+  // Si el usuario ocultó todo con ✋, una superficie nueva vuelve a verse:
+  // Hermes la dibujó porque quiere mostrarla.
+  _ensureSurfacesVisible() {
+    if (!this._gesturesHidden) return;
+    this._gesturesHidden = false;
+    const container = this.querySelector('#windows-container');
+    if (container) container.classList.remove('hidden');
   }
 
   _setWindowBody(record, kind, data) {
@@ -863,6 +903,7 @@ class LumenShell extends HTMLElement {
       record.el.setAttribute('title', data.title);
     }
     this._setWindowBody(record, kind, data);
+    this._setFrontWindow(id);
   }
 
   closeWindow(id) {
@@ -870,6 +911,9 @@ class LumenShell extends HTMLElement {
     if (!record) return;
     record.el.remove();
     this.windows.delete(id);
+    if (this._frontWindowId === id) {
+      this._frontWindowId = Array.from(this.windows.keys()).pop() || null;
+    }
   }
 
   // Wake word dentro del modo: solo pulso de escucha. La intro completa (velo +
@@ -877,6 +921,210 @@ class LumenShell extends HTMLElement {
   _handleIntro() {
     if (!this.autopilot) return;
     this.setShellState('listening');
+  }
+
+  // =============================================
+  // Gestos con cámara (v1): ✊ cierra la de adelante, deslizar enfoca la
+  // anterior/siguiente, ✋ oculta/muestra todas. La cámara vive SOLO mientras
+  // el modo piloto y los gestos están activos; el punto junto al orbe lo
+  // indica por privacidad. El modelo se descarga una vez (main.js).
+  // =============================================
+  setGesturesEnabled(enabled) {
+    if (enabled === this.gesturesEnabled) return;
+    this.gesturesEnabled = enabled;
+    console.log('[shell] gestures:', enabled);
+    this._syncGestures();
+  }
+
+  _syncGestures() {
+    const want = this.autopilot && this.gesturesEnabled;
+    if (want && !this._gesturesActive) {
+      this._startGestures();
+    } else if (!want && this._gesturesActive) {
+      this._stopGestures();
+    }
+  }
+
+  async _startGestures() {
+    if (this._gesturesActive) return;
+    this._gesturesActive = true;
+    try {
+      const prep = await window.hermis.gesturesStart();
+      if (!prep || !prep.ok) throw new Error((prep && prep.message) || 'modelo no disponible');
+      if (!this._gesturesWanted()) return;
+      const { FilesetResolver, GestureRecognizer } = await import(`${GESTURE_MEDIA_BASE}/vision_bundle.mjs`);
+      const fileset = await FilesetResolver.forVisionTasks(`${GESTURE_MEDIA_BASE}/wasm`);
+      const options = (delegate) => ({
+        baseOptions: { modelAssetPath: GESTURE_MODEL_URL, delegate },
+        runningMode: 'VIDEO',
+        numHands: 1,
+      });
+      let recognizer;
+      try {
+        recognizer = await GestureRecognizer.createFromOptions(fileset, options('GPU'));
+      } catch (err) {
+        console.warn('[gestos] GPU no disponible; uso CPU:', err.message);
+        recognizer = await GestureRecognizer.createFromOptions(fileset, options('CPU'));
+      }
+      if (!this._gesturesWanted()) {
+        try { recognizer.close(); } catch (e) { /* ya liberado */ }
+        return;
+      }
+      // Sin append al DOM: nadie ve los cuadros, solo el reconocedor.
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      await video.play();
+      this._gestureRuntime = {
+        recognizer, video, lastTime: -1, raf: 0,
+        trail: [], fistSince: 0, palmSince: 0, holdCooldown: 0, swipeCooldown: 0,
+      };
+      this._updateCameraIndicator();
+      this._gestureLoop();
+      console.log('[gestos] cámara activa', video.videoWidth + 'x' + video.videoHeight);
+    } catch (err) {
+      console.warn('[gestos] no se pudo iniciar:', err.message);
+      this._toast('✋ Gestos: cámara no disponible', 'error');
+      this._stopGestures();
+      return;
+    }
+    if (!this._gesturesWanted()) this._stopGestures();
+  }
+
+  _gesturesWanted() {
+    return this._gesturesActive && this.autopilot && this.gesturesEnabled;
+  }
+
+  _stopGestures() {
+    this._gesturesActive = false;
+    const rt = this._gestureRuntime;
+    this._gestureRuntime = null;
+    if (rt) {
+      cancelAnimationFrame(rt.raf);
+      if (rt.video && rt.video.srcObject) {
+        for (const track of rt.video.srcObject.getTracks()) track.stop();
+      }
+      try { rt.recognizer.close(); } catch (e) { /* ya liberado */ }
+    }
+    this._updateCameraIndicator();
+    console.log('[gestos] cámara apagada');
+  }
+
+  _updateCameraIndicator() {
+    const dot = this.querySelector('#camera-indicator');
+    if (dot) dot.classList.toggle('hidden', !this._gesturesActive);
+  }
+
+  _gestureLoop() {
+    const rt = this._gestureRuntime;
+    if (!rt) return;
+    rt.raf = requestAnimationFrame(() => this._gestureLoop());
+    const { video, recognizer } = rt;
+    if (video.readyState < 2 || video.currentTime === rt.lastTime) return;
+    rt.lastTime = video.currentTime;
+    const now = performance.now();
+    let result;
+    try {
+      result = recognizer.recognizeForVideo(video, now);
+    } catch (e) {
+      return;
+    }
+    const top = result.gestures && result.gestures[0] ? result.gestures[0][0] : null;
+    const hand = result.landmarks && result.landmarks[0];
+    if (!hand) {
+      rt.trail.length = 0;
+      rt.fistSince = 0;
+      rt.palmSince = 0;
+      return;
+    }
+    // Deslizamientos: trayectoria x de la muñeca (landmark 0), espejada tal
+    // como se ve en pantalla (convención de gesture-test.js).
+    rt.trail.push({ t: now, x: 1 - hand[0].x });
+    while (rt.trail.length && now - rt.trail[0].t > SWIPE_WINDOW_MS) rt.trail.shift();
+    if (rt.trail.length > 1 && now > rt.swipeCooldown) {
+      const dx = rt.trail[rt.trail.length - 1].x - rt.trail[0].x;
+      if (Math.abs(dx) > SWIPE_THRESHOLD) {
+        this._focusSurface(dx > 0 ? 1 : -1);
+        rt.swipeCooldown = now + SWIPE_COOLDOWN_MS;
+        rt.trail.length = 0;
+        rt.fistSince = 0;
+        rt.palmSince = 0;  // mano en movimiento no es una pose sostenida
+      }
+    }
+    const name = top && top.score > GESTURE_SCORE_MIN ? top.categoryName : 'None';
+    if (name === 'Closed_Fist') {
+      if (!rt.fistSince) rt.fistSince = now;
+      if (now - rt.fistSince >= FIST_HOLD_MS && now > rt.holdCooldown) {
+        this._closeFrontSurface();
+        rt.holdCooldown = now + HOLD_COOLDOWN_MS;
+        rt.fistSince = 0;
+        rt.palmSince = 0;
+      }
+    } else {
+      rt.fistSince = 0;
+    }
+    if (name === 'Open_Palm') {
+      if (!rt.palmSince) rt.palmSince = now;
+      if (now - rt.palmSince >= PALM_HOLD_MS && now > rt.holdCooldown) {
+        this._toggleSurfacesHidden();
+        rt.holdCooldown = now + HOLD_COOLDOWN_MS;
+        rt.palmSince = 0;
+        rt.fistSince = 0;
+      }
+    } else {
+      rt.palmSince = 0;
+    }
+  }
+
+  // Foco local: deslizar trae la superficie anterior/siguiente al frente.
+  _focusSurface(dir) {
+    const ids = Array.from(this.windows.keys());
+    if (!ids.length) return;
+    let idx = ids.indexOf(this._frontWindowId);
+    if (idx === -1) idx = ids.length - 1;
+    idx = (idx + dir + ids.length) % ids.length;
+    this._setFrontWindow(ids[idx]);
+    this._toast(dir > 0 ? '➡️ Siguiente' : '⬅️ Anterior');
+  }
+
+  _setFrontWindow(id) {
+    const record = this.windows.get(id);
+    if (!record) return;
+    this._frontWindowId = id;
+    for (const [wid, rec] of this.windows) rec.el.style.zIndex = wid === id ? '55' : '50';
+  }
+
+  // ✊: la de adelante se cierra localmente y también por el plugin
+  // (gesture.close → close_surface), así Hermes sabe qué quedó en pantalla.
+  _closeFrontSurface() {
+    let id = this._frontWindowId;
+    if (!id || !this.windows.has(id)) id = Array.from(this.windows.keys()).pop() || null;
+    if (!id) {
+      this._toast('✊ Nada que cerrar');
+      return;
+    }
+    try { window.hermis.gestureClose(id); } catch (e) { console.warn('[gestos] no se pudo avisar al plugin:', e.message); }
+    this.closeWindow(id);
+    this._toast('✊ Cerrar');
+  }
+
+  // ✋: toggle local de todas las superficies (notificaciones no, son efímeras).
+  _toggleSurfacesHidden() {
+    this._gesturesHidden = !this._gesturesHidden;
+    const container = this.querySelector('#windows-container');
+    if (container) container.classList.toggle('hidden', this._gesturesHidden);
+    this._toast(this._gesturesHidden ? '✋ Ocultar' : '✋ Mostrar');
+  }
+
+  _toast(text, level = 'info') {
+    const container = this.querySelector('#notifications-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = `gesture-toast level-${NOTIF_LEVELS.includes(level) ? level : 'info'}`;
+    el.textContent = text;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), TOAST_LIFETIME_MS);
   }
 
   setShellState(state) {
@@ -891,6 +1139,8 @@ class LumenShell extends HTMLElement {
     if (on === this.autopilot) return;
     this.autopilot = on;
     console.log('[shell] autopilot:', on);
+    // Salir del modo apaga la cámara (si el usuario salta el velo no importa).
+    this._syncGestures();
     this._cancelMorph();
     const orb = this.querySelector('lumen-orb');
     if (!orb) return;
