@@ -1,3 +1,5 @@
+![H.E.R.M.I.S](docs/cover.jpg)
+
 # H.E.R.M.I.S
 
 **Autopilot Mode for Hermes Agent: your Windows desktop becomes an OS for agents.**
